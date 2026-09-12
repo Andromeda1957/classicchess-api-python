@@ -1,4 +1,4 @@
-"""Run the Andromeda API CLI with `python -m andromeda_api`."""
+"""Run the Classic Chess API CLI with `python -m classicchess_api`."""
 
 from .cli import main
 

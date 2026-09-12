@@ -18,7 +18,7 @@ Homepage = "https://classicchess.com/api/"
 Repository = "https://github.com/Andromeda1957/classicchess-api-python"
 
 [project.scripts]
-classicchess-api = "andromeda_api.cli:main"
+classicchess-api = "classicchess_api.cli:main"
 
 [tool.setuptools]
-packages = ["andromeda_api"]
+packages = ["classicchess_api"]

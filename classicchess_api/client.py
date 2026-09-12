@@ -1,4 +1,4 @@
-"""Python client for the public Andromeda chess archive API."""
+"""Python client for the public Classic Chess archive API."""
 
 from __future__ import annotations
 
@@ -15,17 +15,18 @@ from urllib.request import Request
 from urllib.request import build_opener
 from urllib.request import urlopen
 
-from andromeda_api.origin_policy import CredentialOriginError
-from andromeda_api.origin_policy import SameOriginHTTPSRedirectHandler
-from andromeda_api.origin_policy import require_credentialed_url
-from andromeda_api.response import DEFAULT_MAX_RESPONSE_BYTES
-from andromeda_api.response import ApiError
-from andromeda_api.response import collect_pages
-from andromeda_api.response import decode_json_object
-from andromeda_api.response import read_bounded
+from classicchess_api.origin_policy import CredentialOriginError
+from classicchess_api.origin_policy import SameOriginHTTPSRedirectHandler
+from classicchess_api.origin_policy import require_credentialed_url
+from classicchess_api.response import DEFAULT_MAX_RESPONSE_BYTES
+from classicchess_api.response import ApiError
+from classicchess_api.response import collect_pages
+from classicchess_api.response import continuation_url
+from classicchess_api.response import decode_json_object
+from classicchess_api.response import read_bounded
 
 DEFAULT_BASE_URL = "https://classicchess.com"
-USER_AGENT = "andromeda-local-api-client/1.0"
+USER_AGENT = "classicchess-python-client/0.1.0"
 
 
 def http_api_error(exc, url, body):
@@ -105,8 +106,8 @@ def extract_public_game_token(value: str) -> tuple[str, ...]:
     raise ApiError(f"Could not find a public game token in URL: {value}")
 
 
-class AndromedaClient:
-    """Dependency-free client for Andromeda JSON, PGN, and account API endpoints."""
+class ClassicChessClient:
+    """Dependency-free client for Classic Chess JSON, PGN, and account API endpoints."""
 
     def __init__(
         self,
@@ -184,7 +185,7 @@ class AndromedaClient:
     ) -> dict[str, Any]:
         token = api_token or self.api_token
         if not token:
-            raise ApiError("An Andromeda API token is required for account commands.")
+            raise ApiError("A Classic Chess API token is required for account commands.")
         body = json.dumps(payload or {}).encode("utf-8") if payload is not None else None
         headers = {
             "Accept": "application/json",
@@ -273,6 +274,23 @@ class AndromedaClient:
 
     def public_players(self, query: str | None = None) -> dict[str, Any]:
         return self.get_json("/api/v1/public/players/", {"q": query})
+
+    def discovery(self) -> dict[str, Any]:
+        return self.get_json("/api/v1/")
+
+    def player_names(self, query: str | None = None) -> list[str]:
+        return [player['name'] for player in self.public_players(query)['results']]
+
+    def event_names(self, query: str | None = None) -> list[str]:
+        return [event['name'] for event in self.public_events(query)['results']]
+
+    def book_titles(self) -> list[str]:
+        return [book['label'] for book in self.annotated_books()['results']]
+
+    def event_series(self, query: str | None = None, series: str | None = None) -> dict[str, Any]:
+        if query and series or query and len(query) > 120 or series and not re.fullmatch(r'[a-z0-9-]{1,160}', series):
+            raise ApiError('Use either an event query of at most 120 characters or an exact series slug.', code='invalid_query')
+        return self.get_json('/api/v1/public/event-series/', {'q': query, 'series': series})
 
     def public_player(self, player_slug: str) -> dict[str, Any]:
         return self.get_json(public_player_path(player_slug))
@@ -434,11 +452,64 @@ class AndromedaClient:
         *,
         page: int = 1,
         page_size: int = 50,
+        all_pages: bool = False,
+        limit: int | None = None,
     ) -> dict[str, Any]:
-        return self.get_json(
+        return self._paginated(
             f"/api/v1/annotated/books/{book_slug}/games/",
-            {"page": page, "page_size": page_size},
+            {}, page=page, page_size=page_size, all_pages=all_pages, limit=limit,
         )
+
+    def iterate_public_games(self, query: str = '', *, archive_player=None, archive_event=None,
+                             since=None, until=None, sort='asc', page=1, page_size=50,
+                             limit: int | None = None, max_pages: int = 100_000):
+        url = self._iteration_url('/api/v1/public/games/', {
+            'q': query, 'archive_player': archive_player, 'archive_event': archive_event,
+            'since': since, 'until': until, 'sort': sort,
+        }, page, page_size)
+        yield from self._iterate(url, limit, max_pages)
+
+    def iterate_master_games(self, query: str, *, page=1, page_size=50,
+                             limit: int | None = None, max_pages: int = 100_000):
+        if not query:
+            raise ApiError('iterate_master_games requires a query.', code='invalid_query')
+        url = self._iteration_url('/api/v1/games/', {'q': query}, page, page_size)
+        yield from self._iterate(url, limit, max_pages)
+
+    def iterate_annotated_games(self, book_slug: str, *, page=1, page_size=50,
+                                limit: int | None = None, max_pages: int = 100_000):
+        url = self._iteration_url(f'/api/v1/annotated/books/{book_slug}/games/', {}, page, page_size)
+        yield from self._iterate(url, limit, max_pages)
+
+    def _iteration_url(self, path, params, page, page_size):
+        if type(page) is not int or page < 1 or type(page_size) is not int or not 1 <= page_size <= 100:
+            raise ApiError('Use a positive page and page_size between 1 and 100.', code='invalid_pagination')
+        return self.url(path, {**params, 'page': page, 'page_size': page_size})
+
+    def _iterate(self, first: str, limit: int | None, max_pages: int):
+        if (type(max_pages) is not int or max_pages < 1
+                or limit is not None and (type(limit) is not int or limit < 0)):
+            raise ApiError('Use positive max_pages and a nonnegative limit.', code='invalid_pagination')
+        if limit == 0:
+            return
+        count = 0
+        current = first
+        seen = set()
+        while True:
+            if current in seen or len(seen) >= max_pages:
+                raise ApiError('Pagination repeated a page or exceeded max_pages.', code='invalid_pagination')
+            seen.add(current)
+            page = self.fetch_json(current)
+            if not isinstance(page, dict) or not isinstance(page.get('results'), list) or 'next' not in page:
+                raise ApiError('Response is not a game page.', code='invalid_response')
+            for game in page['results']:
+                yield game
+                count += 1
+                if limit is not None and count >= limit:
+                    return
+            if page['next'] is None:
+                return
+            current = continuation_url(first, current, page['next'])
 
     def annotated_game(self, book_slug: str, game_slug: str) -> dict[str, Any]:
         return self.get_json(f"/api/v1/annotated/books/{book_slug}/games/{game_slug}/")
@@ -478,9 +549,9 @@ class AndromedaClient:
 
 def fetch_url(url: str) -> tuple[bytes, str]:
     """Compatibility helper for callers that only need one raw URL fetch."""
-    return AndromedaClient().fetch_url(url)
+    return ClassicChessClient().fetch_url(url)
 
 
 def fetch_json(url: str) -> dict[str, Any]:
     """Compatibility helper for callers that only need one JSON URL fetch."""
-    return AndromedaClient().fetch_json(url)
+    return ClassicChessClient().fetch_json(url)

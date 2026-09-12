@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Local CLI for pulling Andromeda API data without curl."""
+"""Local CLI for pulling Classic Chess API data without curl."""
 
 from __future__ import annotations
 
@@ -11,8 +11,8 @@ from pathlib import Path
 from typing import Any
 
 from .client import DEFAULT_BASE_URL
-from .client import AndromedaClient
 from .client import ApiError
+from .client import ClassicChessClient
 from .presentation import add_output_options
 from .presentation import print_resource
 
@@ -70,10 +70,10 @@ def build_public_game_query(args: argparse.Namespace) -> str:
     return query
 
 
-def client_from_args(args: argparse.Namespace) -> AndromedaClient:
-    return AndromedaClient(
+def client_from_args(args: argparse.Namespace) -> ClassicChessClient:
+    return ClassicChessClient(
         args.base_url,
-        api_token=args.api_token or os.environ.get("ANDROMEDA_API_TOKEN"),
+        api_token=args.api_token or os.environ.get("CLASSICCHESS_API_TOKEN") or os.environ.get("ANDROMEDA_API_TOKEN"),
     )
 
 
@@ -146,7 +146,7 @@ def collect_public_game_pages(args: argparse.Namespace, query: str) -> dict[str,
 
 
 def pgn_text_for_games(base_url: str, games: list[dict[str, Any]]) -> str:
-    return AndromedaClient(base_url).pgn_text_for_games(games)
+    return ClassicChessClient(base_url).pgn_text_for_games(games)
 
 
 def command_master_games(args: argparse.Namespace) -> int:
@@ -512,7 +512,7 @@ def add_account_commands(subparsers: argparse._SubParsersAction) -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Pull Andromeda API data from an explicit source.",
+        description="Pull Classic Chess API data from an explicit source.",
     )
     parser.add_argument(
         "--base-url",
@@ -521,7 +521,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--api-token",
-        help="Account API token. Defaults to ANDROMEDA_API_TOKEN when omitted.",
+        help="Account API token. Defaults to CLASSICCHESS_API_TOKEN when omitted.",
     )
     subparsers = parser.add_subparsers(dest="source", required=True)
     add_master_commands(subparsers)

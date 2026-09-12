@@ -7,16 +7,16 @@ from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.request import Request
 
-from andromeda_api.client import AndromedaClient
-from andromeda_api.client import ApiError
-from andromeda_api.origin_policy import CredentialOriginError
-from andromeda_api.origin_policy import SameOriginHTTPSRedirectHandler
-from andromeda_api.origin_policy import require_credentialed_url
+from classicchess_api.client import ApiError
+from classicchess_api.client import ClassicChessClient
+from classicchess_api.origin_policy import CredentialOriginError
+from classicchess_api.origin_policy import SameOriginHTTPSRedirectHandler
+from classicchess_api.origin_policy import require_credentialed_url
 
 
 class PlayerDiscoveryClientTests(unittest.TestCase):
     def test_player_resources_request_the_exact_public_resource(self):
-        client = AndromedaClient()
+        client = ClassicChessClient()
         for method, suffix in (('public_player', ''), ('public_player_bio', 'bio/'), ('public_notable_games', 'notable-games/')):
             with self.subTest(method=method), patch.object(client, 'fetch_json', return_value={'source': 'public'}) as fetch:
                 result = getattr(client, method)('mikhail-tal')
@@ -24,7 +24,7 @@ class PlayerDiscoveryClientTests(unittest.TestCase):
                 fetch.assert_called_once_with(f'https://classicchess.com/api/v1/public/players/mikhail-tal/{suffix}')
 
     def test_player_resource_rejects_paths_and_query_injection_before_io(self):
-        client = AndromedaClient()
+        client = ClassicChessClient()
         with patch.object(client, 'fetch_json') as fetch:
             for slug in ('../events', 'tal?format=txt', 'https://other.invalid', 'tal/bio'):
                 with self.subTest(slug=slug), self.assertRaises(ApiError):
@@ -36,8 +36,8 @@ class PlayerDiscoveryClientTests(unittest.TestCase):
             'https://classicchess.com/api/v1/games/', 429, 'Too many requests',
             {'Retry-After': '900'}, BytesIO(b'{"error":{"code":"rate_limited","message":"Please wait."}}'),
         )
-        with patch('andromeda_api.client.urlopen', side_effect=error), self.assertRaises(ApiError) as caught:
-            AndromedaClient().get_json('/api/v1/games/', {'q': 'Tal'})
+        with patch('classicchess_api.client.urlopen', side_effect=error), self.assertRaises(ApiError) as caught:
+            ClassicChessClient().get_json('/api/v1/games/', {'q': 'Tal'})
         self.assertEqual(caught.exception.status_code, 429)
         self.assertEqual(caught.exception.code, 'rate_limited')
         self.assertEqual(caught.exception.message, 'Please wait.')
@@ -124,10 +124,10 @@ class CredentialOriginPolicyTests(unittest.TestCase):
             )
 
     def test_packaged_client_rejects_before_opening_a_foreign_url(self) -> None:
-        client = AndromedaClient(base_url="https://classicchess.com/")
+        client = ClassicChessClient(base_url="https://classicchess.com/")
         with (
-            patch("andromeda_api.client.build_opener") as build_opener,
-            patch("andromeda_api.client.urlopen") as urlopen,
+            patch("classicchess_api.client.build_opener") as build_opener,
+            patch("classicchess_api.client.urlopen") as urlopen,
             self.assertRaisesRegex(ApiError, "Refused credentialed request"),
         ):
             client.fetch_url(
@@ -140,8 +140,8 @@ class CredentialOriginPolicyTests(unittest.TestCase):
 
 
 class PaginatedClientTests(unittest.TestCase):
-    def client_with_pages(self, pages: list[dict[str, object]]) -> tuple[AndromedaClient, Mock]:
-        client = AndromedaClient(base_url="https://example.test")
+    def client_with_pages(self, pages: list[dict[str, object]]) -> tuple[ClassicChessClient, Mock]:
+        client = ClassicChessClient(base_url="https://example.test")
         get_json = Mock(side_effect=pages)
         client.fetch_json = get_json
         return client, get_json

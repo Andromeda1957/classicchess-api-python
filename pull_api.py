@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Christian Walls
-"""Local CLI for pulling Andromeda API data without curl."""
+"""Local CLI for pulling Classic Chess API data without curl."""
 
 from __future__ import annotations
 
@@ -27,10 +27,10 @@ from urllib.request import build_opener
 from urllib.request import urlopen
 
 DEFAULT_BASE_URL = "https://classicchess.com"
-USER_AGENT = "andromeda-local-api-client/1.0"
+USER_AGENT = "classicchess-python-client/0.1.0"
 
 
-# Embedded from andromeda_api/response.py for the dependency-free download.
+# Embedded from classicchess_api/response.py for the dependency-free download.
 DEFAULT_MAX_RESPONSE_BYTES = 32 * 1024 * 1024
 DEFAULT_MAX_PAGES = 100_000
 
@@ -285,9 +285,9 @@ def fetch_json(url: str, **kwargs: Any) -> dict[str, Any]:
 
 
 def api_token_from_args(args: argparse.Namespace) -> str:
-    token = args.api_token or os.environ.get("ANDROMEDA_API_TOKEN") or ""
+    token = args.api_token or os.environ.get("CLASSICCHESS_API_TOKEN") or os.environ.get("ANDROMEDA_API_TOKEN") or ""
     if not token:
-        raise ApiError("An Andromeda API token is required for account commands.")
+        raise ApiError("A Classic Chess API token is required for account commands.")
     return token
 
 
@@ -1019,7 +1019,7 @@ def add_account_commands(subparsers: argparse._SubParsersAction) -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Pull Andromeda API data from an explicit source.",
+        description="Pull Classic Chess API data from an explicit source.",
     )
     parser.add_argument(
         "--base-url",
@@ -1028,7 +1028,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--api-token",
-        help="Account API token. Defaults to ANDROMEDA_API_TOKEN when omitted.",
+        help="Account API token. Defaults to CLASSICCHESS_API_TOKEN when omitted.",
     )
     subparsers = parser.add_subparsers(dest="source", required=True)
     add_master_commands(subparsers)

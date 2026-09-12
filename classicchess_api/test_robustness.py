@@ -10,12 +10,12 @@ from urllib.error import HTTPError
 from urllib.parse import parse_qs
 from urllib.parse import urlsplit
 
-from andromeda_api import client as packaged
+from classicchess_api import client as packaged
 
 
 def standalone_client():
     root = Path(__file__).resolve().parents[1]
-    path = root / 'andromeda_api/standalone.py'
+    path = root / 'classicchess_api/standalone.py'
     if not path.is_file():
         path = root / 'pull_api.py'
     spec = importlib.util.spec_from_file_location('standalone_api', path)
@@ -40,7 +40,7 @@ class PythonClientRobustnessTests(TestCase):
 
     def collect(self, module, fetch, *, limit=None):
         if module is packaged:
-            client = packaged.AndromedaClient()
+            client = packaged.ClassicChessClient()
             client.fetch_json = fetch
             return client.master_games(query='Tal', all_pages=True, limit=limit, page_size=1)
         args = Namespace(base_url='https://classicchess.com', page=1, page_size=1,
@@ -101,7 +101,7 @@ class PythonClientRobustnessTests(TestCase):
             for body in (b'\xff', b'[]', b'<h1>Unavailable</h1>'):
                 with self.subTest(client=module.__name__, body=body), \
                         patch.object(module, 'urlopen', return_value=Response(body)):
-                    fetch = packaged.AndromedaClient().fetch_json if module is packaged else module.fetch_json
+                    fetch = packaged.ClassicChessClient().fetch_json if module is packaged else module.fetch_json
                     with self.assertRaises(module.ApiError) as caught:
                         fetch('https://classicchess.com/api/v1/')
                     self.assertEqual(caught.exception.code, 'invalid_response')
@@ -117,7 +117,7 @@ class PythonClientRobustnessTests(TestCase):
                 ):
                     with self.assertRaises(module.ApiError) as caught:
                         if module is packaged:
-                            packaged.AndromedaClient(max_response_bytes=8).fetch_url('https://classicchess.com/api/v1/')
+                            packaged.ClassicChessClient(max_response_bytes=8).fetch_url('https://classicchess.com/api/v1/')
                         else:
                             module.fetch_url('https://classicchess.com/api/v1/', max_response_bytes=8)
                     self.assertEqual(caught.exception.code, 'response_too_large')
@@ -129,7 +129,7 @@ class PythonClientRobustnessTests(TestCase):
             with self.subTest(client=module.__name__), patch.object(module, 'urlopen', side_effect=TimeoutError()):
                 with self.assertRaises(module.ApiError) as caught:
                     if module is packaged:
-                        packaged.AndromedaClient().fetch_url('https://classicchess.com/api/v1/')
+                        packaged.ClassicChessClient().fetch_url('https://classicchess.com/api/v1/')
                     else:
                         module.fetch_url('https://classicchess.com/api/v1/')
                 self.assertEqual(caught.exception.code, 'timeout')

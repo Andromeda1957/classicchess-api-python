@@ -7,9 +7,9 @@ from unittest import TestCase
 from unittest.mock import patch
 from urllib.error import HTTPError
 
-from andromeda_api import client as packaged
-from andromeda_api.test_robustness import Response
-from andromeda_api.test_robustness import standalone_client
+from classicchess_api import client as packaged
+from classicchess_api.test_robustness import Response
+from classicchess_api.test_robustness import standalone_client
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE_PATH = ROOT / 'contracts/client-fixtures.json'
@@ -24,7 +24,7 @@ class SharedClientContractTests(TestCase):
 
     def collect(self, module, *, limit=None):
         if module is packaged:
-            return module.AndromedaClient().master_games(query='Tal', all_pages=True, limit=limit, page_size=1)
+            return module.ClassicChessClient().master_games(query='Tal', all_pages=True, limit=limit, page_size=1)
         args = Namespace(base_url='https://classicchess.com', page=1, page_size=1, all_pages=True, limit=limit)
         return module.collect_master_game_pages(args, 'Tal')
 

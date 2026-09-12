@@ -1,9 +1,11 @@
-"""Import surface for the Andromeda API client package."""
+"""Import surface for the Classic Chess API client package."""
 
+from .application import ApplicationClient
+from .application import ApplicationResponse
 from .client import DEFAULT_BASE_URL
 from .client import USER_AGENT
-from .client import AndromedaClient
 from .client import ApiError
+from .client import ClassicChessClient
 from .client import api_url
 from .client import extract_master_game_token
 from .client import extract_public_game_token
@@ -14,8 +16,10 @@ from .client import normalized_base_url
 __all__ = [
     "DEFAULT_BASE_URL",
     "USER_AGENT",
-    "AndromedaClient",
+    "ClassicChessClient",
     "ApiError",
+    "ApplicationClient",
+    "ApplicationResponse",
     "api_url",
     "extract_master_game_token",
     "extract_public_game_token",
