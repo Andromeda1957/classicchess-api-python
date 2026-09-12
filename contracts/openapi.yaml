@@ -1,0 +1,1318 @@
+openapi: 3.1.0
+info:
+  title: Classic Chess API
+  version: 1.4.0
+  description: >-
+    Discover curated players, approved biographies, notable games, events and annotated books;
+    search the broader MasterDB; and download PGN. Public reads need no API key.
+    Player, event, book and notable-game catalogs are complete lists. Game searches are paginated.
+    Relative response URLs resolve against the server origin. Account automation uses scoped bearer tokens.
+servers:
+  - url: https://classicchess.com
+paths:
+  /api/v1/:
+    get:
+      operationId: discoverApi
+      summary: Discover collections, resource links, formats and pagination
+      tags: [Discovery]
+      responses:
+        "200":
+          description: Public API catalog; no authentication required.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiDiscovery' }
+  /api/v1/players/:
+    get:
+      summary: Resolve player names
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema: { type: string, maxLength: 80 }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 10, maximum: 50 }
+      responses:
+        "200":
+          description: MasterDB identity and public archive player matches.
+  /api/v1/stats/:
+    get:
+      summary: Player statistics
+      parameters:
+        - name: player
+          in: query
+          required: true
+          schema: { type: string, maxLength: 80 }
+        - name: mode
+          in: query
+          schema: { type: string, enum: [summary, head_to_head], default: summary }
+        - name: opponent
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: Player summary or head-to-head record.
+  /api/v1/games/:
+    get:
+      summary: Search MasterDB games
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema: { type: string, maxLength: 120 }
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: page_size
+          in: query
+          schema: { type: integer, default: 50, maximum: 100 }
+      responses:
+        "200":
+          description: Paginated MasterDB game summaries.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MasterGamePage' }
+  /api/v1/games/export/:
+    get:
+      summary: Export MasterDB games
+      parameters:
+        - name: q
+          in: query
+          schema: { type: string, maxLength: 120 }
+        - name: tokens
+          in: query
+          schema: { type: string, description: Comma-separated game tokens, max 300. Token lists are limited to 64 KiB. }
+        - name: format
+          in: query
+          schema: { type: string, enum: [pgn, ndjson], default: pgn }
+        - name: pgnInJson
+          in: query
+          schema: { type: boolean, default: true }
+      responses:
+        "200":
+          description: PGN bundle or newline-delimited JSON, at most 300 games. Query exports stop at the first 300 matches; paginate game results and batch their tokens for a complete larger archive.
+    post:
+      summary: Export MasterDB games by token body
+      requestBody:
+        required: true
+        content:
+          text/plain:
+            schema: { type: string, maxLength: 65536, description: Comma- or newline-separated game tokens, max 300. }
+      responses:
+        "200":
+          description: PGN bundle or newline-delimited JSON, at most 300 games. Query exports stop at the first 300 matches; paginate game results and batch their tokens for a complete larger archive.
+  /api/v1/games/{token}/:
+    get:
+      summary: Get one MasterDB game
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema: { type: string, maxLength: 80 }
+      responses:
+        "200":
+          description: One game with PGN.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MasterGameDetail' }
+  /api/v1/games/{token}/pgn/:
+    get:
+      summary: Get one MasterDB PGN
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema: { type: string, maxLength: 120 }
+      responses:
+        "200":
+          description: Raw PGN.
+          content:
+            application/x-chess-pgn:
+              schema: { type: string }
+  /api/v1/games/{token}/gif/:
+    get:
+      summary: Export one MasterDB game as an animated GIF
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema: { type: string, maxLength: 120 }
+        - name: orientation
+          in: query
+          schema: { type: string, enum: [white, black], default: white }
+      responses:
+        "200":
+          description: Animated GIF.
+        "429":
+          description: GIF export rate limit exceeded.
+  /api/v1/public/players/:
+    get:
+      operationId: listCuratedPlayers
+      summary: List every curated player, including approved biographies and resource links
+      description: >-
+        A complete unpaginated catalog of players with archived games. JSON is the default
+        and preserves the existing profile fields. Use format=txt for names only, one per line.
+        A missing or withheld biography is null. Follow urls.api_detail, urls.api_bio,
+        urls.api_notable_games, urls.api_games and urls.api_pgn to explore a player.
+      tags: [Curated players]
+      parameters:
+        - name: q
+          in: query
+          schema: { type: string, maxLength: 80 }
+        - $ref: '#/components/parameters/CatalogFormat'
+        - name: bucket
+          in: query
+          description: Archive era key returned in archive_buckets. An unknown key selects all eras.
+          schema: { type: string, maxLength: 40 }
+      responses:
+        "200":
+          description: Complete public player catalog or UTF-8 names, one per line.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PublicPlayers' }
+            text/plain:
+              schema: { type: string, example: "Mikhail Tal\nJosé Raúl Capablanca\n" }
+        "400": { $ref: '#/components/responses/InvalidQuery' }
+  /api/v1/public/players/{player_slug}/:
+    get:
+      operationId: getCuratedPlayer
+      tags: [Curated players]
+      summary: Get one curated player profile, approved biography, portrait and links
+      parameters:
+        - $ref: '#/components/parameters/PlayerSlug'
+      responses:
+        "200":
+          description: One public profile. bio is null when unavailable; bookmarked belongs to the caller.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PublicPlayerDetail' }
+        "404": { $ref: '#/components/responses/PublicPlayerNotFound' }
+  /api/v1/public/players/{player_slug}/bio/:
+    get:
+      operationId: getCuratedPlayerBiography
+      tags: [Curated players]
+      summary: Read an approved player biography, structured sections, quotes and sources
+      parameters:
+        - $ref: '#/components/parameters/PlayerSlug'
+      responses:
+        "200":
+          description: Player identity plus bio. Both absent and withheld biographies return bio null.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PublicPlayerBiography' }
+        "404": { $ref: '#/components/responses/PublicPlayerNotFound' }
+  /api/v1/public/players/{player_slug}/notable-games/:
+    get:
+      operationId: listCuratedNotableGames
+      tags: [Curated players]
+      summary: List a player's curated notable games, in editorial order
+      description: >-
+        Complete unpaginated list. Each entry has its one-based position, editorial title,
+        annotation and a game summary with canonical detail and PGN URLs. The annotation
+        explains the selection; it is not move-by-move commentary. An empty selection
+        returns count 0 and results []. Only public games belonging to this player appear.
+      parameters:
+        - $ref: '#/components/parameters/PlayerSlug'
+      responses:
+        "200":
+          description: Ordered notable-game selection with canonical game tokens and URLs.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PublicNotableGames' }
+        "404": { $ref: '#/components/responses/PublicPlayerNotFound' }
+  /api/v1/public/event-series/:
+    get:
+      operationId: listEventSeries
+      tags: [Curated events]
+      summary: Browse event-series cards, select a series, or search events
+      description: Complete catalog. Supply either q or series; omit both for series cards, including Matches and Misc.
+      parameters:
+        - name: q
+          in: query
+          schema: { type: string, maxLength: 120 }
+        - name: series
+          in: query
+          schema: { type: string, maxLength: 160, pattern: '^[a-z0-9-]+$' }
+      responses:
+        "200":
+          description: Series cards or their member events, in archive order.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PublicEventIndex' }
+        "400": { $ref: '#/components/responses/InvalidQuery' }
+        "404":
+          description: The series does not exist.
+  /api/v1/public/events/:
+    get:
+      operationId: listCuratedEvents
+      tags: [Curated events]
+      summary: List every public study-event archive
+      parameters:
+        - name: q
+          in: query
+          schema: { type: string, maxLength: 120 }
+          description: Filter by event name, slug, series, site, source label, or year.
+        - $ref: '#/components/parameters/CatalogFormat'
+      responses:
+        "200":
+          description: Complete public event inventory with canonical metadata, counts, and links.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PublicEvents' }
+            text/plain:
+              schema: { type: string, description: Complete list of names, one per line. }
+        "400": { $ref: '#/components/responses/InvalidQuery' }
+  /api/v1/public/games/:
+    get:
+      operationId: listPublicGames
+      tags: [Public archive]
+      summary: Search player- and event-backed public archive games
+      parameters:
+        - name: q
+          in: query
+          schema: { type: string, maxLength: 120 }
+        - name: archive_player
+          in: query
+          schema: { type: string, maxLength: 80 }
+        - name: archive_event
+          in: query
+          schema: { type: string, maxLength: 255 }
+          description: Event slug returned by the public events endpoint.
+        - name: since
+          in: query
+          schema: { type: integer, minimum: 1400, maximum: 9999 }
+        - name: until
+          in: query
+          schema: { type: integer, minimum: 1400, maximum: 9999 }
+        - name: sort
+          in: query
+          schema: { type: string, enum: [asc, desc, event], default: asc }
+          description: event preserves curated round order and requires archive_event.
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: page_size
+          in: query
+          schema: { type: integer, default: 50, maximum: 100 }
+      responses:
+        "200":
+          description: Paginated public archive game summaries, including event-only games. Returned navigable URLs use the shared canonical game record.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PublicGamePage' }
+        "400": { $ref: '#/components/responses/InvalidQuery' }
+  /api/v1/public/games/{game_slug}/:
+    get:
+      operationId: getPublicGame
+      tags: [Public archive]
+      summary: Canonical public archive game detail
+      parameters:
+        - name: game_slug
+          in: path
+          required: true
+          schema: { type: string, maxLength: 255 }
+      responses:
+        "200":
+          description: Public game detail with archive memberships, PGN, and mainline.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PublicGame' }
+        "404":
+          description: Game is not in a public player or event archive.
+  /api/v1/public/games/{game_slug}/pgn/:
+    get:
+      summary: Canonical public archive game PGN
+      parameters:
+        - name: game_slug
+          in: path
+          required: true
+          schema: { type: string, maxLength: 255 }
+      responses:
+        "200":
+          description: Sanitized public PGN as text/plain.
+          content:
+            text/plain:
+              schema: { type: string }
+  /api/v1/public/games/export/:
+    get:
+      summary: Export player- and event-backed public archive games
+      parameters:
+        - name: q
+          in: query
+          schema: { type: string }
+        - name: archive_player
+          in: query
+          schema: { type: string }
+        - name: archive_event
+          in: query
+          schema: { type: string, maxLength: 255 }
+        - name: since
+          in: query
+          schema: { type: integer, minimum: 1400, maximum: 9999 }
+        - name: until
+          in: query
+          schema: { type: integer, minimum: 1400, maximum: 9999 }
+        - name: tokens
+          in: query
+          schema: { type: string, description: "Comma-separated canonical game_slug or legacy player_slug/game_slug tokens, max 300. Token lists are limited to 64 KiB." }
+        - name: format
+          in: query
+          schema: { type: string, enum: [pgn, ndjson], default: pgn }
+        - name: pgnInJson
+          in: query
+          schema: { type: boolean, default: true }
+      responses:
+        "200":
+          description: PGN bundle or newline-delimited JSON, at most 300 games. Query exports stop at the first 300 matches; paginate game results and batch their tokens for a complete larger archive.
+    post:
+      summary: Export public archive games by canonical or compatibility token body
+      requestBody:
+        required: true
+        content:
+          text/plain:
+            schema: { type: string, maxLength: 65536, description: Comma- or newline-separated canonical game_slug or legacy player_slug/game_slug tokens, max 300. }
+      responses:
+        "200":
+          description: PGN bundle or newline-delimited JSON, at most 300 games. Query exports stop at the first 300 matches; paginate game results and batch their tokens for a complete larger archive.
+  /api/v1/annotated/books/:
+    get:
+      operationId: listAnnotatedBooks
+      tags: [Annotated books]
+      summary: List every annotated book, with source metadata and download links
+      parameters:
+        - $ref: '#/components/parameters/CatalogFormat'
+      responses:
+        "200":
+          description: Complete unpaginated catalog, or book titles only with format=txt.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AnnotatedBooks' }
+            text/plain:
+              schema: { type: string, description: One book title per line. }
+        "400": { $ref: '#/components/responses/InvalidQuery' }
+  /api/v1/annotated/books/{book_slug}/games/:
+    get:
+      summary: List games in an annotated book
+      parameters:
+        - name: book_slug
+          in: path
+          required: true
+          schema: { type: string, maxLength: 128 }
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: page_size
+          in: query
+          schema: { type: integer, default: 50, maximum: 100 }
+      responses:
+        "200":
+          description: Paginated annotated games.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AnnotatedGamePage' }
+  /api/v1/annotated/books/{book_slug}/pgn/:
+    get:
+      summary: Export all games in an annotated book as PGN
+      parameters:
+        - name: book_slug
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Raw PGN bundle.
+  /api/v1/annotated/books/{book_slug}/games/{game_slug}/:
+    get:
+      summary: Get one annotated game
+      parameters:
+        - name: book_slug
+          in: path
+          required: true
+          schema: { type: string }
+        - name: game_slug
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: One annotated game with PGN and annotation notes.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AnnotatedGame' }
+  /api/v1/annotated/books/{book_slug}/games/{game_slug}/pgn/:
+    get:
+      summary: Get one annotated game as PGN
+      parameters:
+        - name: book_slug
+          in: path
+          required: true
+          schema: { type: string }
+        - name: game_slug
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Raw annotated PGN with source headers and comments.
+          content:
+            application/x-chess-pgn:
+              schema: { type: string }
+  /api/v1/opening-explorer/:
+    get:
+      summary: Explore an opening position
+      parameters:
+        - name: fen
+          in: query
+          schema: { type: string }
+        - name: play
+          in: query
+          schema: { type: string, maxLength: 512, description: Comma-separated UCI moves to play from fen, max 100 moves. }
+        - name: moves
+          in: query
+          schema: { type: integer, default: 12, maximum: 50 }
+        - name: topGames
+          in: query
+          schema: { type: integer, default: 15, maximum: 15 }
+        - name: since
+          in: query
+          schema: { type: integer, minimum: 1400, maximum: 9999 }
+          description: Include only games from this year or later when the source supports year indexes.
+        - name: until
+          in: query
+          schema: { type: integer, minimum: 1400, maximum: 9999 }
+          description: Include only games from this year or earlier when the source supports year indexes.
+        - name: source_type
+          in: query
+          schema: { type: string }
+        - name: source_key
+          in: query
+          schema: { type: string }
+          description: Public source key returned by the sources endpoint; the master database key is masterdb.
+      responses:
+        "200":
+          description: Position totals, moves, and top reference games.
+  /api/v1/opening-explorer/player/:
+    get:
+      summary: Find a player's games at a position without rendering website fragments
+      description: Returns structured game rows, canonical API detail links, counts and pagination. A cold index returns 202 with pending and retry_after_ms.
+      parameters:
+        - name: player
+          in: query
+          schema: { type: string, maxLength: 80 }
+        - name: fen
+          in: query
+          schema: { type: string, maxLength: 100 }
+        - name: color
+          in: query
+          schema: { type: string, enum: [both, white, black] }
+        - name: result
+          in: query
+          schema: { type: string }
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1 }
+      responses:
+        "200":
+          description: Player resolution or paginated position matches. No HTML or pager fragments.
+        "202":
+          description: Position index is building; retry the newest requested position after retry_after_ms.
+  /api/v1/opening-explorer/sources/:
+    get:
+      summary: List opening explorer sources
+      responses:
+        "200":
+          description: Available opening explorer builds.
+  /api/v1/mobile/home/:
+    get:
+      summary: Native mobile home payload
+      responses:
+        "200":
+          description: Front-door counts, Game of the Day, and native app action links.
+  /api/v1/mobile/android/release/:
+    get:
+      summary: Native Android release metadata
+      responses:
+        "200":
+          description: Version code/name, APK URL, SHA-256 checksum, and size.
+  /api/v1/account/mobile/login/:
+    post:
+      summary: Native mobile username/password login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username: { type: string, maxLength: 150 }
+                password: { type: string }
+                two_factor_code: { type: string, description: Authenticator or recovery code when required. }
+                device_name: { type: string, maxLength: 80 }
+      responses:
+        "201":
+          description: Mobile session bearer credential and account summary.
+        "400":
+          description: Invalid JSON request.
+        "401":
+          description: Invalid credentials, two_factor_required, or invalid_two_factor.
+  /api/v1/account/mobile/logout/:
+    post:
+      summary: Revoke the current native mobile session
+      security:
+        - MobileSessionToken: []
+      responses:
+        "200":
+          description: Mobile session revoked.
+        "401":
+          description: Missing, invalid, expired, or revoked mobile session.
+  /api/v1/account/mobile/sessions/:
+    get:
+      summary: List the account's active native device sessions
+      security:
+        - MobileSessionToken: []
+      responses:
+        "200":
+          description: Owner-scoped device names, timestamps, expiry, and current-session marker.
+        "401":
+          description: Missing, invalid, expired, or revoked mobile session.
+  /api/v1/account/mobile/sessions/{session_id}/revoke/:
+    post:
+      summary: Revoke one account-owned native device session
+      security:
+        - MobileSessionToken: []
+      parameters:
+        - in: path
+          name: session_id
+          required: true
+          schema: { type: integer, minimum: 1 }
+      responses:
+        "200":
+          description: Device session revoked.
+        "401":
+          description: Missing, invalid, expired, or revoked mobile session.
+        "404":
+          description: Device session is inactive or does not belong to the account.
+  /api/v1/account/mobile/sessions/revoke-all/:
+    post:
+      summary: Revoke every native device session for the account
+      security:
+        - MobileSessionToken: []
+      responses:
+        "200":
+          description: All account-owned device sessions, including the caller, were revoked.
+        "401":
+          description: Missing, invalid, expired, or revoked mobile session.
+  /api/v1/account/mobile/settings/:
+    get:
+      summary: Native mobile account settings
+      security:
+        - MobileSessionToken: []
+      responses:
+        "200":
+          description: Board theme, piece set, and engine preferences from account settings.
+        "401":
+          description: Missing, invalid, expired, or revoked mobile session.
+    post:
+      summary: Update native mobile board or engine settings
+      security:
+        - MobileSessionToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                board_theme: { type: string }
+                piece_set: { type: string }
+                engine_depth: { type: integer }
+                engine_lines: { type: integer, minimum: 1, maximum: 5 }
+                engine_eval_bar: { type: boolean }
+                engine_enabled: { type: boolean }
+      responses:
+        "200":
+          description: Updated account settings payload.
+        "400":
+          description: Invalid preference or request body.
+        "401":
+          description: Missing, invalid, expired, or revoked mobile session.
+  /api/v1/account/me/:
+    get:
+      summary: Authenticated account summary
+      security:
+        - AccountApiToken: []
+        - MobileSessionToken: []
+      x-required-scopes: [account:read]
+      responses:
+        "200":
+          description: Current account username, email, and email verification state.
+        "401":
+          description: Missing, invalid, expired, or revoked bearer token.
+        "403":
+          description: Token is missing the required scope.
+  /api/v1/account/collections/:
+    get:
+      summary: List account collections
+      security:
+        - AccountApiToken: []
+        - MobileSessionToken: []
+      x-required-scopes: [library:read]
+      responses:
+        "200":
+          description: Account collections with game counts.
+    post:
+      summary: Create an account collection
+      security:
+        - AccountApiToken: []
+        - MobileSessionToken: []
+      x-required-scopes: [library:write]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, maxLength: 120 }
+      responses:
+        "201":
+          description: Created collection.
+        "400":
+          description: Validation error.
+  /api/v1/account/collections/{collection_id}/:
+    get:
+      summary: List owned collection games
+      security:
+        - AccountApiToken: []
+        - MobileSessionToken: []
+      x-required-scopes: [library:read]
+      parameters:
+        - in: path
+          name: collection_id
+          required: true
+          schema: { type: integer }
+        - in: query
+          name: page
+          schema: { type: integer, minimum: 1 }
+        - in: query
+          name: page_size
+          schema: { type: integer, minimum: 1, maximum: 100 }
+        - in: query
+          name: sort
+          schema: { type: string }
+      responses:
+        "200":
+          description: Paginated collection games.
+        "401":
+          description: Missing or invalid bearer token.
+        "403":
+          description: Token is missing the required scope.
+        "404":
+          description: Collection not found for this account.
+    patch:
+      summary: Rename an owned collection
+      security:
+        - AccountApiToken: []
+        - MobileSessionToken: []
+      x-required-scopes: [library:write]
+      parameters:
+        - in: path
+          name: collection_id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, maxLength: 120 }
+      responses:
+        "200":
+          description: Updated collection.
+        "400":
+          description: Validation error.
+        "403":
+          description: Token is missing the required scope.
+        "404":
+          description: Collection not found for this account.
+    delete:
+      summary: Delete an owned collection
+      security:
+        - AccountApiToken: []
+        - MobileSessionToken: []
+      x-required-scopes: [library:write]
+      parameters:
+        - in: path
+          name: collection_id
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Collection deleted.
+        "403":
+          description: Token is missing the required scope.
+        "404":
+          description: Collection not found for this account.
+  /api/v1/account/collections/{collection_id}/items/{item_id}/:
+    delete:
+      summary: Remove a game from an owned collection
+      security:
+        - AccountApiToken: []
+        - MobileSessionToken: []
+      x-required-scopes: [library:write]
+      parameters:
+        - in: path
+          name: collection_id
+          required: true
+          schema: { type: integer }
+        - in: path
+          name: item_id
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Game removed from collection.
+        "403":
+          description: Token is missing the required scope.
+        "404":
+          description: Collection not found for this account.
+  /api/v1/account/collections/import/:
+    post:
+      summary: Import public archive player games into an account collection
+      security:
+        - AccountApiToken: []
+        - MobileSessionToken: []
+      x-required-scopes: [library:write]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [source, archive_player]
+              properties:
+                source: { type: string, enum: [public_player_games] }
+                name: { type: string, maxLength: 120, description: Collection name to create or reuse when collection_id is omitted. }
+                collection_id: { type: integer, description: Existing account collection ID. }
+                archive_player: { type: string, maxLength: 80 }
+                since: { type: integer, minimum: 1400, maximum: 9999 }
+                until: { type: integer, minimum: 1400, maximum: 9999 }
+      responses:
+        "200":
+          description: Import counts and collection metadata.
+        "400":
+          description: Validation error.
+  /api/v1/account/imported-games/:
+    get:
+      summary: List or search owned imported games
+      security:
+        - AccountApiToken: []
+        - MobileSessionToken: []
+      x-required-scopes: [library:read]
+      parameters:
+        - in: query
+          name: q
+          schema: { type: string, maxLength: 120 }
+        - in: query
+          name: page
+          schema: { type: integer, minimum: 1 }
+        - in: query
+          name: page_size
+          schema: { type: integer, minimum: 1, maximum: 100 }
+      responses:
+        "200":
+          description: Paginated imported-game summaries and quota.
+    post:
+      summary: Import an account-owned game
+      security:
+        - AccountApiToken: []
+        - MobileSessionToken: []
+      x-required-scopes: [library:write]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                source: { type: string, enum: [pgn, lichess, chesscom] }
+                pgn: { type: string }
+                remote_url: { type: string, format: uri }
+                visibility: { type: string, enum: [private, public] }
+      responses:
+        "201":
+          description: Imported game with PGN and board-ready mainline.
+        "400":
+          description: Invalid import, quota, provider URL, or request body.
+  /api/v1/account/imported-games/{slug}/:
+    get:
+      summary: Owned imported-game detail
+      security:
+        - AccountApiToken: []
+        - MobileSessionToken: []
+      x-required-scopes: [library:read]
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Imported game detail with PGN and board-ready mainline.
+        "404":
+          description: Imported game not found for this account.
+  /api/v1/public/games/{player_slug}/{game_slug}/:
+    get:
+      summary: Compatibility URL for a game in a player's archive
+      description: Prefer the canonical game URL from urls.api_detail. This older URL remains supported for installed clients and validates player membership.
+      x-audience: compatibility
+      parameters:
+        - { name: player_slug, in: path, required: true, schema: { type: string } }
+        - { name: game_slug, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Public game detail, including PGN and mainline.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PublicGame' }
+        "404": { description: No public game belonging to this player. }
+  /api/v1/public/games/{player_slug}/{game_slug}/pgn/:
+    get:
+      summary: Compatibility PGN URL for a player's game
+      x-audience: compatibility
+      parameters:
+        - { name: player_slug, in: path, required: true, schema: { type: string } }
+        - { name: game_slug, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Sanitized public PGN.
+          content:
+            text/plain:
+              schema: { type: string }
+        "404": { description: No public game belonging to this player. }
+  /api/v1/account/players/{player_slug}/bookmark/:
+    post:
+      summary: Toggle a player bookmark for the authenticated library owner
+      security: [{ AccountApiToken: [] }, { MobileSessionToken: [] }]
+      description: Personal tokens require library:write. Device sessions are also accepted. This operation toggles state; do not automatically retry it.
+      parameters:
+        - { name: player_slug, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Resulting bookmark state.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, slug, bookmarked, message]
+                properties:
+                  ok: { type: boolean }
+                  slug: { type: string }
+                  bookmarked: { type: boolean }
+                  message: { type: string }
+        "401": { description: Missing or invalid token. }
+        "403": { description: Token does not have library:write. }
+        "404": { description: Player has no public archive. }
+components:
+  parameters:
+    CatalogFormat:
+      name: format
+      in: query
+      description: JSON metadata by default; txt returns only the complete list of names or titles.
+      schema: { type: string, enum: [json, txt], default: json }
+    PlayerSlug:
+      name: player_slug
+      in: path
+      required: true
+      description: Exact slug from the curated-player catalog, not a display name or MasterDB identity.
+      schema: { type: string, example: mikhail-tal }
+  responses:
+    InvalidQuery:
+      description: Query exceeds its bounds or requests an unsupported format.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+    PublicPlayerNotFound:
+      description: No public player archive with this slug and at least one archived game.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+  schemas:
+    MasterGame:
+      type: object
+      description: MasterDB search metadata. Tokens identify MasterDB games, not curated archive slugs.
+      required: [token, white, black, display_white, display_black, result, event, site, date, played_on, year, round, white_elo, black_elo, eco, opening, ply_count, move_count, source_count, urls]
+      properties:
+        token: { type: string, pattern: '^g[0-9a-z]+-[0-9a-f]{12}$', maxLength: 80 }
+        white: { type: string }
+        black: { type: string }
+        display_white: { type: string }
+        display_black: { type: string }
+        result: { type: string }
+        event: { type: string }
+        site: { type: string }
+        date: { type: string }
+        played_on: { type: [string, 'null'] }
+        year: { type: [integer, 'null'] }
+        round: { type: string }
+        white_elo: { type: [integer, 'null'] }
+        black_elo: { type: [integer, 'null'] }
+        eco: { type: string }
+        opening: { type: string }
+        ply_count: { type: [integer, 'null'] }
+        move_count: { type: [integer, 'null'] }
+        source_count: { type: integer }
+        urls: { $ref: '#/components/schemas/ResourceLinks' }
+    MasterGameDetail:
+      allOf:
+        - $ref: '#/components/schemas/MasterGame'
+        - type: object
+          required: [pgn, mainline]
+          properties:
+            pgn: { type: string }
+            mainline: { type: object }
+    MasterGamePage:
+      type: object
+      required: [query, count, page, page_size, page_count, count_is_exact, result_limit, hit_result_limit, next, previous, message, hint, results]
+      properties:
+        query: { type: string }
+        count: { type: integer, description: Lower bound unless count_is_exact is true. }
+        page: { type: integer }
+        page_size: { type: integer }
+        page_count: { type: integer, description: Known pages so far; follow next rather than assuming an exact total. }
+        count_is_exact: { type: boolean }
+        result_limit: { type: integer }
+        hit_result_limit: { type: boolean, description: Search stopped at the server result limit; refine the query. }
+        next: { type: [string, 'null'] }
+        previous: { type: [string, 'null'] }
+        message: { type: [string, 'null'] }
+        hint: { type: string }
+        results:
+          type: array
+          items: { $ref: '#/components/schemas/MasterGame' }
+    ApiError:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string }
+            message: { type: string }
+    ApiDiscovery:
+      type: object
+      required: [name, version, authentication, documentation, collections, player_resources, tools, pagination]
+      properties:
+        name: { type: string }
+        version: { type: string, const: v1 }
+        authentication: { type: object }
+        documentation: { $ref: '#/components/schemas/ResourceLinks' }
+        collections:
+          type: object
+          additionalProperties:
+            type: object
+            required: [url, description, paginated]
+            properties:
+              url: { type: string }
+              text_url: { type: string }
+              description: { type: string }
+              paginated: { type: boolean }
+        player_resources: { type: object }
+        tools: { $ref: '#/components/schemas/ResourceLinks' }
+        pagination: { type: object }
+    ResourceLinks:
+      type: object
+      description: Follow these links. Paths beginning with / resolve against the API origin.
+      additionalProperties: { type: [string, 'null'] }
+    PlayerIdentity:
+      type: object
+      required: [name, slug]
+      properties:
+        name: { type: string }
+        slug: { type: string }
+    Biography:
+      type: [object, 'null']
+      description: Approved biography only. Render prose and quotes as text, not trusted HTML.
+      required: [epithet, lifespan, crown, lede, vitals, sections, numbers, quotes_by, quotes_about, legacy, sources]
+      properties:
+        epithet: { type: string }
+        lifespan: { type: string }
+        crown: { type: string }
+        lede: { type: string }
+        vitals:
+          type: array
+          items:
+            type: object
+            properties:
+              label: { type: string }
+              value: { type: string }
+        sections:
+          type: array
+          items:
+            type: object
+            properties:
+              heading: { type: string }
+              body: { type: array, items: { type: string } }
+        numbers:
+          type: array
+          items: { type: object }
+        quotes_by:
+          type: array
+          items: { $ref: '#/components/schemas/BiographyQuote' }
+        quotes_about:
+          type: array
+          items: { $ref: '#/components/schemas/BiographyQuote' }
+        legacy: { type: string }
+        sources:
+          type: array
+          items:
+            type: object
+            properties:
+              label: { type: string }
+              url: { type: string }
+    BiographyQuote:
+      type: object
+      properties:
+        text: { type: string }
+        source: { type: string }
+    PublicPlayer:
+      allOf:
+        - $ref: '#/components/schemas/PlayerIdentity'
+        - type: object
+          required: [archive_bucket, game_count, archive_years, bookmarked, criteria, portrait, bio, urls]
+          properties:
+            archive_bucket:
+              type: object
+              properties:
+                key: { type: string }
+                label: { type: string }
+            game_count: { type: integer, minimum: 1 }
+            archive_years: { type: string, description: Game year span; not the player's lifespan. }
+            bookmarked: { type: boolean, description: Caller-specific bookmark state; false for anonymous requests. }
+            criteria: { type: string }
+            portrait:
+              type: object
+              properties:
+                image: { type: string }
+                thumbnail: { type: string }
+            bio: { $ref: '#/components/schemas/Biography' }
+            urls:
+              allOf:
+                - $ref: '#/components/schemas/ResourceLinks'
+                - required: [api_detail, api_bio, api_notable_games, api_games, api_pgn, html_games, html_about]
+    PublicPlayers:
+      type: object
+      required: [source, query, active_bucket, archive_buckets, count, results]
+      properties:
+        source: { const: public }
+        query: { type: string }
+        active_bucket: { type: string }
+        archive_buckets: { type: array, items: { type: object } }
+        count: { type: integer, minimum: 0 }
+        results: { type: array, items: { $ref: '#/components/schemas/PublicPlayer' } }
+    PublicPlayerDetail:
+      type: object
+      required: [source, player]
+      properties:
+        source: { const: public }
+        player: { $ref: '#/components/schemas/PublicPlayer' }
+    PublicPlayerBiography:
+      type: object
+      required: [source, player, bio]
+      properties:
+        source: { const: public }
+        player: { $ref: '#/components/schemas/PlayerIdentity' }
+        bio: { $ref: '#/components/schemas/Biography' }
+    PublicGame:
+      type: object
+      required: [token, player, white, black, result, event, date, urls]
+      properties:
+        token: { type: string, description: Canonical slug on new detail and notable routes; legacy player/slug tokens remain valid. }
+        player:
+          anyOf:
+            - $ref: '#/components/schemas/PlayerIdentity'
+            - { type: 'null' }
+        white: { type: string }
+        black: { type: string }
+        display_white: { type: string }
+        display_black: { type: string }
+        result: { type: string }
+        event: { type: string }
+        site: { type: string }
+        date: { type: string, description: PGN date; unknown month or day may contain question marks. }
+        played_on: { type: [string, 'null'], format: date }
+        round: { type: string }
+        eco: { type: string }
+        opening: { type: string }
+        event_round: { type: string, description: Curated round label when sort=event. }
+        move_count: { type: [integer, 'null'] }
+        white_elo: { type: [integer, 'null'] }
+        black_elo: { type: [integer, 'null'] }
+        urls: { $ref: '#/components/schemas/ResourceLinks' }
+        pgn: { type: string }
+        mainline: { type: object }
+        memberships: { type: array, items: { type: object } }
+    PublicGamePage:
+      type: object
+      required: [source, count, page, page_size, page_count, next, previous, results]
+      properties:
+        source: { const: public }
+        query: { type: string }
+        archive_player: { type: string }
+        archive_event: { type: string }
+        since: { type: [integer, 'null'] }
+        until: { type: [integer, 'null'] }
+        sort: { type: string, enum: [asc, desc, event] }
+        count: { type: integer, minimum: 0 }
+        page: { type: integer, minimum: 1 }
+        page_size: { type: integer, minimum: 1, maximum: 100 }
+        page_count: { type: integer, minimum: 1 }
+        next: { type: [string, 'null'], description: Relative URL; null at the end. }
+        previous: { type: [string, 'null'] }
+        results: { type: array, items: { $ref: '#/components/schemas/PublicGame' } }
+    PublicNotableGames:
+      type: object
+      required: [source, player, count, results]
+      properties:
+        source: { const: public }
+        player: { $ref: '#/components/schemas/PlayerIdentity' }
+        count: { type: integer, minimum: 0 }
+        results:
+          type: array
+          items:
+            type: object
+            required: [position, title, annotation, game]
+            properties:
+              position: { type: integer, minimum: 1 }
+              title: { type: string }
+              annotation: { type: string }
+              game: { $ref: '#/components/schemas/PublicGame' }
+    PublicEventIndex:
+      type: object
+      required: [query]
+      properties:
+        query: { type: string }
+        series_slug: { type: string }
+        series_cards:
+          type: array
+          items:
+            type: object
+            required: [name, slug, eyebrow, description, year_span, year_from, year_to, event_count, game_count]
+            properties:
+              name: { type: string }
+              slug: { type: string }
+              eyebrow: { type: string }
+              description: { type: string }
+              year_span: { type: string }
+              year_from: { type: [integer, 'null'] }
+              year_to: { type: [integer, 'null'] }
+              event_count: { type: integer }
+              game_count: { type: integer }
+        events:
+          type: array
+          items:
+            type: object
+            required: [name, slug, event_type, event_type_label, year, game_count, expected_game_count, series]
+            properties:
+              name: { type: string }
+              slug: { type: string }
+              event_type: { type: string }
+              event_type_label: { type: string }
+              year: { type: [integer, 'null'] }
+              game_count: { type: integer }
+              expected_game_count: { type: integer }
+              series: { type: object }
+    PublicEvents:
+      type: object
+      required: [source, query, count, results]
+      properties:
+        source: { const: public }
+        query: { type: string }
+        count: { type: integer, minimum: 0 }
+        results:
+          type: array
+          items:
+            type: object
+            required: [name, slug, year, game_count, expected_game_count, event_type, series, source, urls]
+            properties:
+              name: { type: string }
+              slug: { type: string }
+              year: { type: integer }
+              game_count: { type: integer }
+              expected_game_count: { type: integer }
+              event_type: { type: object }
+              series: { type: [object, 'null'] }
+              source: { type: object }
+              urls: { $ref: '#/components/schemas/ResourceLinks' }
+    AnnotatedBooks:
+      type: object
+      required: [source, count, results]
+      properties:
+        source: { const: annotated }
+        count: { type: integer, minimum: 0 }
+        results:
+          type: array
+          items:
+            type: object
+            required: [slug, label, source_url, game_count, cover_image, urls, download]
+            properties:
+              slug: { type: string }
+              label: { type: string }
+              source_url: { type: string }
+              game_count: { type: integer }
+              cover_image: { type: string }
+              urls: { $ref: '#/components/schemas/ResourceLinks' }
+              download: { type: [object, 'null'] }
+    AnnotatedGame:
+      allOf:
+        - $ref: '#/components/schemas/PublicGame'
+        - type: object
+          required: [book, annotation]
+          properties:
+            book:
+              type: object
+              required: [slug, label, source_url]
+              properties:
+                slug: { type: string }
+                label: { type: string }
+                source_url: { type: string }
+            annotation:
+              type: object
+              required: [source_label, source_url, license, license_name, is_public_domain, note_count]
+              properties:
+                source_label: { type: string }
+                source_url: { type: string }
+                license: { type: string }
+                license_name: { type: string }
+                is_public_domain: { type: boolean }
+                note_count: { type: integer }
+                intro: { type: string }
+                notes: { type: array, items: { type: object } }
+    AnnotatedGamePage:
+      type: object
+      required: [source, book, count, page, page_size, page_count, next, previous, results]
+      properties:
+        source: { const: annotated }
+        book: { type: object }
+        count: { type: integer, minimum: 0 }
+        page: { type: integer, minimum: 1 }
+        page_size: { type: integer, minimum: 1, maximum: 100 }
+        page_count: { type: integer, minimum: 1 }
+        next: { type: [string, 'null'] }
+        previous: { type: [string, 'null'] }
+        results: { type: array, items: { $ref: '#/components/schemas/AnnotatedGame' } }
+  securitySchemes:
+    AccountApiToken:
+      type: http
+      scheme: bearer
+      bearerFormat: Classic Chess personal API token
+    MobileSessionToken:
+      type: http
+      scheme: bearer
+      bearerFormat: Classic Chess native mobile session token

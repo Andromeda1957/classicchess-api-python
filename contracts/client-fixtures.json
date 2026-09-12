@@ -1,0 +1,614 @@
+{
+  "version": 1,
+  "page_sequences": [
+    {
+      "name": "growing-3-pages",
+      "pages": [
+        {
+          "query": "Tal",
+          "count": 2,
+          "count_is_exact": false,
+          "page": 1,
+          "page_size": 1,
+          "page_count": 2,
+          "result_limit": 1000,
+          "hit_result_limit": false,
+          "next": "?q=Tal&page=2&page_size=1",
+          "previous": null,
+          "message": null,
+          "hint": "",
+          "results": [
+            {
+              "token": "g1-000000000000",
+              "white": "Tal",
+              "black": "Keres",
+              "display_white": "Tal",
+              "display_black": "Keres",
+              "result": "1-0",
+              "event": "Client contract",
+              "site": "Riga",
+              "date": "1960.??.??",
+              "played_on": null,
+              "year": 1960,
+              "round": "1",
+              "white_elo": null,
+              "black_elo": null,
+              "eco": "B33",
+              "opening": "Sicilian Defense",
+              "ply_count": null,
+              "move_count": null,
+              "source_count": 1,
+              "urls": {
+                "api": "/api/v1/games/g1-000000000000/"
+              }
+            }
+          ]
+        },
+        {
+          "query": "Tal",
+          "count": 3,
+          "count_is_exact": false,
+          "page": 2,
+          "page_size": 1,
+          "page_count": 3,
+          "result_limit": 1000,
+          "hit_result_limit": false,
+          "next": "?q=Tal&page=3&page_size=1",
+          "previous": "?q=Tal&page=1&page_size=1",
+          "message": null,
+          "hint": "",
+          "results": [
+            {
+              "token": "g2-000000000000",
+              "white": "Tal",
+              "black": "Keres",
+              "display_white": "Tal",
+              "display_black": "Keres",
+              "result": "1-0",
+              "event": "Client contract",
+              "site": "Riga",
+              "date": "1960.??.??",
+              "played_on": null,
+              "year": 1960,
+              "round": "1",
+              "white_elo": null,
+              "black_elo": null,
+              "eco": "B33",
+              "opening": "Sicilian Defense",
+              "ply_count": null,
+              "move_count": null,
+              "source_count": 1,
+              "urls": {
+                "api": "/api/v1/games/g2-000000000000/"
+              }
+            }
+          ]
+        },
+        {
+          "query": "Tal",
+          "count": 3,
+          "count_is_exact": true,
+          "page": 3,
+          "page_size": 1,
+          "page_count": 3,
+          "result_limit": 1000,
+          "hit_result_limit": false,
+          "next": null,
+          "previous": "?q=Tal&page=2&page_size=1",
+          "message": null,
+          "hint": "",
+          "results": [
+            {
+              "token": "g3-000000000000",
+              "white": "Tal",
+              "black": "Keres",
+              "display_white": "Tal",
+              "display_black": "Keres",
+              "result": "1-0",
+              "event": "Client contract",
+              "site": "Riga",
+              "date": "1960.??.??",
+              "played_on": null,
+              "year": 1960,
+              "round": "1",
+              "white_elo": null,
+              "black_elo": null,
+              "eco": "B33",
+              "opening": "Sicilian Defense",
+              "ply_count": null,
+              "move_count": null,
+              "source_count": 1,
+              "urls": {
+                "api": "/api/v1/games/g3-000000000000/"
+              }
+            }
+          ]
+        }
+      ],
+      "expected_tokens": [
+        "g1-000000000000",
+        "g2-000000000000",
+        "g3-000000000000"
+      ]
+    },
+    {
+      "name": "growing-4-pages",
+      "pages": [
+        {
+          "query": "Tal",
+          "count": 2,
+          "count_is_exact": false,
+          "page": 1,
+          "page_size": 1,
+          "page_count": 2,
+          "result_limit": 1000,
+          "hit_result_limit": false,
+          "next": "?q=Tal&page=2&page_size=1",
+          "previous": null,
+          "message": null,
+          "hint": "",
+          "results": [
+            {
+              "token": "g1-000000000000",
+              "white": "Tal",
+              "black": "Keres",
+              "display_white": "Tal",
+              "display_black": "Keres",
+              "result": "1-0",
+              "event": "Client contract",
+              "site": "Riga",
+              "date": "1960.??.??",
+              "played_on": null,
+              "year": 1960,
+              "round": "1",
+              "white_elo": null,
+              "black_elo": null,
+              "eco": "B33",
+              "opening": "Sicilian Defense",
+              "ply_count": null,
+              "move_count": null,
+              "source_count": 1,
+              "urls": {
+                "api": "/api/v1/games/g1-000000000000/"
+              }
+            }
+          ]
+        },
+        {
+          "query": "Tal",
+          "count": 3,
+          "count_is_exact": false,
+          "page": 2,
+          "page_size": 1,
+          "page_count": 3,
+          "result_limit": 1000,
+          "hit_result_limit": false,
+          "next": "?q=Tal&page=3&page_size=1",
+          "previous": "?q=Tal&page=1&page_size=1",
+          "message": null,
+          "hint": "",
+          "results": [
+            {
+              "token": "g2-000000000000",
+              "white": "Tal",
+              "black": "Keres",
+              "display_white": "Tal",
+              "display_black": "Keres",
+              "result": "1-0",
+              "event": "Client contract",
+              "site": "Riga",
+              "date": "1960.??.??",
+              "played_on": null,
+              "year": 1960,
+              "round": "1",
+              "white_elo": null,
+              "black_elo": null,
+              "eco": "B33",
+              "opening": "Sicilian Defense",
+              "ply_count": null,
+              "move_count": null,
+              "source_count": 1,
+              "urls": {
+                "api": "/api/v1/games/g2-000000000000/"
+              }
+            }
+          ]
+        },
+        {
+          "query": "Tal",
+          "count": 4,
+          "count_is_exact": false,
+          "page": 3,
+          "page_size": 1,
+          "page_count": 4,
+          "result_limit": 1000,
+          "hit_result_limit": false,
+          "next": "?q=Tal&page=4&page_size=1",
+          "previous": "?q=Tal&page=2&page_size=1",
+          "message": null,
+          "hint": "",
+          "results": [
+            {
+              "token": "g3-000000000000",
+              "white": "Tal",
+              "black": "Keres",
+              "display_white": "Tal",
+              "display_black": "Keres",
+              "result": "1-0",
+              "event": "Client contract",
+              "site": "Riga",
+              "date": "1960.??.??",
+              "played_on": null,
+              "year": 1960,
+              "round": "1",
+              "white_elo": null,
+              "black_elo": null,
+              "eco": "B33",
+              "opening": "Sicilian Defense",
+              "ply_count": null,
+              "move_count": null,
+              "source_count": 1,
+              "urls": {
+                "api": "/api/v1/games/g3-000000000000/"
+              }
+            }
+          ]
+        },
+        {
+          "query": "Tal",
+          "count": 4,
+          "count_is_exact": true,
+          "page": 4,
+          "page_size": 1,
+          "page_count": 4,
+          "result_limit": 1000,
+          "hit_result_limit": false,
+          "next": null,
+          "previous": "?q=Tal&page=3&page_size=1",
+          "message": null,
+          "hint": "",
+          "results": [
+            {
+              "token": "g4-000000000000",
+              "white": "Tal",
+              "black": "Keres",
+              "display_white": "Tal",
+              "display_black": "Keres",
+              "result": "1-0",
+              "event": "Client contract",
+              "site": "Riga",
+              "date": "1960.??.??",
+              "played_on": null,
+              "year": 1960,
+              "round": "1",
+              "white_elo": null,
+              "black_elo": null,
+              "eco": "B33",
+              "opening": "Sicilian Defense",
+              "ply_count": null,
+              "move_count": null,
+              "source_count": 1,
+              "urls": {
+                "api": "/api/v1/games/g4-000000000000/"
+              }
+            }
+          ]
+        }
+      ],
+      "expected_tokens": [
+        "g1-000000000000",
+        "g2-000000000000",
+        "g3-000000000000",
+        "g4-000000000000"
+      ]
+    },
+    {
+      "name": "growing-6-pages",
+      "pages": [
+        {
+          "query": "Tal",
+          "count": 2,
+          "count_is_exact": false,
+          "page": 1,
+          "page_size": 1,
+          "page_count": 2,
+          "result_limit": 1000,
+          "hit_result_limit": false,
+          "next": "?q=Tal&page=2&page_size=1",
+          "previous": null,
+          "message": null,
+          "hint": "",
+          "results": [
+            {
+              "token": "g1-000000000000",
+              "white": "Tal",
+              "black": "Keres",
+              "display_white": "Tal",
+              "display_black": "Keres",
+              "result": "1-0",
+              "event": "Client contract",
+              "site": "Riga",
+              "date": "1960.??.??",
+              "played_on": null,
+              "year": 1960,
+              "round": "1",
+              "white_elo": null,
+              "black_elo": null,
+              "eco": "B33",
+              "opening": "Sicilian Defense",
+              "ply_count": null,
+              "move_count": null,
+              "source_count": 1,
+              "urls": {
+                "api": "/api/v1/games/g1-000000000000/"
+              }
+            }
+          ]
+        },
+        {
+          "query": "Tal",
+          "count": 3,
+          "count_is_exact": false,
+          "page": 2,
+          "page_size": 1,
+          "page_count": 3,
+          "result_limit": 1000,
+          "hit_result_limit": false,
+          "next": "?q=Tal&page=3&page_size=1",
+          "previous": "?q=Tal&page=1&page_size=1",
+          "message": null,
+          "hint": "",
+          "results": [
+            {
+              "token": "g2-000000000000",
+              "white": "Tal",
+              "black": "Keres",
+              "display_white": "Tal",
+              "display_black": "Keres",
+              "result": "1-0",
+              "event": "Client contract",
+              "site": "Riga",
+              "date": "1960.??.??",
+              "played_on": null,
+              "year": 1960,
+              "round": "1",
+              "white_elo": null,
+              "black_elo": null,
+              "eco": "B33",
+              "opening": "Sicilian Defense",
+              "ply_count": null,
+              "move_count": null,
+              "source_count": 1,
+              "urls": {
+                "api": "/api/v1/games/g2-000000000000/"
+              }
+            }
+          ]
+        },
+        {
+          "query": "Tal",
+          "count": 4,
+          "count_is_exact": false,
+          "page": 3,
+          "page_size": 1,
+          "page_count": 4,
+          "result_limit": 1000,
+          "hit_result_limit": false,
+          "next": "?q=Tal&page=4&page_size=1",
+          "previous": "?q=Tal&page=2&page_size=1",
+          "message": null,
+          "hint": "",
+          "results": [
+            {
+              "token": "g3-000000000000",
+              "white": "Tal",
+              "black": "Keres",
+              "display_white": "Tal",
+              "display_black": "Keres",
+              "result": "1-0",
+              "event": "Client contract",
+              "site": "Riga",
+              "date": "1960.??.??",
+              "played_on": null,
+              "year": 1960,
+              "round": "1",
+              "white_elo": null,
+              "black_elo": null,
+              "eco": "B33",
+              "opening": "Sicilian Defense",
+              "ply_count": null,
+              "move_count": null,
+              "source_count": 1,
+              "urls": {
+                "api": "/api/v1/games/g3-000000000000/"
+              }
+            }
+          ]
+        },
+        {
+          "query": "Tal",
+          "count": 5,
+          "count_is_exact": false,
+          "page": 4,
+          "page_size": 1,
+          "page_count": 5,
+          "result_limit": 1000,
+          "hit_result_limit": false,
+          "next": "?q=Tal&page=5&page_size=1",
+          "previous": "?q=Tal&page=3&page_size=1",
+          "message": null,
+          "hint": "",
+          "results": [
+            {
+              "token": "g4-000000000000",
+              "white": "Tal",
+              "black": "Keres",
+              "display_white": "Tal",
+              "display_black": "Keres",
+              "result": "1-0",
+              "event": "Client contract",
+              "site": "Riga",
+              "date": "1960.??.??",
+              "played_on": null,
+              "year": 1960,
+              "round": "1",
+              "white_elo": null,
+              "black_elo": null,
+              "eco": "B33",
+              "opening": "Sicilian Defense",
+              "ply_count": null,
+              "move_count": null,
+              "source_count": 1,
+              "urls": {
+                "api": "/api/v1/games/g4-000000000000/"
+              }
+            }
+          ]
+        },
+        {
+          "query": "Tal",
+          "count": 6,
+          "count_is_exact": false,
+          "page": 5,
+          "page_size": 1,
+          "page_count": 6,
+          "result_limit": 1000,
+          "hit_result_limit": false,
+          "next": "?q=Tal&page=6&page_size=1",
+          "previous": "?q=Tal&page=4&page_size=1",
+          "message": null,
+          "hint": "",
+          "results": [
+            {
+              "token": "g5-000000000000",
+              "white": "Tal",
+              "black": "Keres",
+              "display_white": "Tal",
+              "display_black": "Keres",
+              "result": "1-0",
+              "event": "Client contract",
+              "site": "Riga",
+              "date": "1960.??.??",
+              "played_on": null,
+              "year": 1960,
+              "round": "1",
+              "white_elo": null,
+              "black_elo": null,
+              "eco": "B33",
+              "opening": "Sicilian Defense",
+              "ply_count": null,
+              "move_count": null,
+              "source_count": 1,
+              "urls": {
+                "api": "/api/v1/games/g5-000000000000/"
+              }
+            }
+          ]
+        },
+        {
+          "query": "Tal",
+          "count": 6,
+          "count_is_exact": true,
+          "page": 6,
+          "page_size": 1,
+          "page_count": 6,
+          "result_limit": 1000,
+          "hit_result_limit": false,
+          "next": null,
+          "previous": "?q=Tal&page=5&page_size=1",
+          "message": null,
+          "hint": "",
+          "results": [
+            {
+              "token": "g6-000000000000",
+              "white": "Tal",
+              "black": "Keres",
+              "display_white": "Tal",
+              "display_black": "Keres",
+              "result": "1-0",
+              "event": "Client contract",
+              "site": "Riga",
+              "date": "1960.??.??",
+              "played_on": null,
+              "year": 1960,
+              "round": "1",
+              "white_elo": null,
+              "black_elo": null,
+              "eco": "B33",
+              "opening": "Sicilian Defense",
+              "ply_count": null,
+              "move_count": null,
+              "source_count": 1,
+              "urls": {
+                "api": "/api/v1/games/g6-000000000000/"
+              }
+            }
+          ]
+        }
+      ],
+      "expected_tokens": [
+        "g1-000000000000",
+        "g2-000000000000",
+        "g3-000000000000",
+        "g4-000000000000",
+        "g5-000000000000",
+        "g6-000000000000"
+      ]
+    }
+  ],
+  "invalid_pages": [
+    {
+      "name": "missing-results",
+      "body": "{\"next\":null}",
+      "code": "invalid_response"
+    },
+    {
+      "name": "array-instead-of-page",
+      "body": "[]",
+      "code": "invalid_response"
+    },
+    {
+      "name": "html-success",
+      "body": "<html>Unavailable</html>",
+      "code": "invalid_response"
+    }
+  ],
+  "http_errors": [
+    {
+      "name": "structured-rate-limit",
+      "status": 429,
+      "body": "{\"error\":{\"code\":\"rate_limited\",\"message\":\"Slow down\"}}",
+      "retry_after": "30",
+      "code": "rate_limited"
+    },
+    {
+      "name": "html-error",
+      "status": 502,
+      "body": "<html>Gateway failed</html>",
+      "retry_after": null,
+      "code": "http_error"
+    },
+    {
+      "name": "malformed-error-object",
+      "status": 400,
+      "body": "{\"error\":{\"code\":17,\"message\":[]}}",
+      "retry_after": null,
+      "code": "http_error"
+    },
+    {
+      "name": "array-error",
+      "status": 503,
+      "body": "[]",
+      "retry_after": "5",
+      "code": "http_error"
+    }
+  ],
+  "stop_after_first": {
+    "items": 1,
+    "requests": 1
+  },
+  "cancellation": {
+    "preserve_caller_cancellation": true,
+    "fetch_next_page": false
+  }
+}
