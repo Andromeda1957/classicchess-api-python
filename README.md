@@ -159,4 +159,4 @@ The same API capabilities are available in the
 See the [API reference](https://classicchess.com/api/) for response fields,
 endpoint permissions, rate limits and data attribution. The MIT license covers
 the SDK code; linked chess resources retain their own stated reuse terms.
-Issues and pull requests are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md).
+Issues and pull requests are welcome; see [CONTRIBUTING.md](https://github.com/Andromeda1957/classicchess-api-python/blob/main/CONTRIBUTING.md).
