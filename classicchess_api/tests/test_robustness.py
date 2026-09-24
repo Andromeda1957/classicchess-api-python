@@ -14,7 +14,7 @@ from classicchess_api import client as packaged
 
 
 def standalone_client():
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[2]
     path = root / 'classicchess_api/standalone.py'
     if not path.is_file():
         path = root / 'pull_api.py'

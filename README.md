@@ -82,8 +82,20 @@ Missing biographies are `None`, and notable lists can be empty.
 | PGN or NDJSON export | `export_public_games()`, `export_master_games()`; select `format="pgn"` or `format="ndjson"` |
 | Player search and statistics | `players(query)`, `master_stats(query=...)` or `master_stats(player=..., opponent=...)` |
 | Opening explorer | `explorer(play=...)` or `explorer(fen=...)`, `explorer_sources()` |
+| Event detail and About page | `public_event(event_slug)`, `public_event_about(event_slug)` |
+| Photo gallery | `gallery(query=None, page=1, page_size=48)`, `gallery_photo(photo_id)` |
+| Beginner games and Game of the Day | `beginner_games()`, `daily_game()` |
+| Site search | `site_search(query)` for a preview of players, events and games; `site_search(query, kind="games", page=2)` for one paginated kind |
+| Endgame tablebase | `tablebase(fen)` uses local Syzygy tables and falls back to the Lichess tablebase for larger positions, as the site does |
 | Account collections | `ApplicationClient.account_me(token)`, `account_collections(token)`, `account_create_collection(name, token)`, `account_import_public_player_games(archive_player, token, ...)` |
-| Notebook, Remote, Cast and other application APIs | `ApplicationClient.request(path, method=..., body=..., token=...)` |
+| Add single games to collections | `ApplicationClient.account_add_collection_game(collection_id, game_slug, token)` |
+| Starred players and games | `account_starred_players(token, page=1, page_size=50)`, `account_star_player(slug, token)`, `account_unstar_player(slug, token)`, `account_starred_games(token, ...)`, `account_star_game(slug, token)`, `account_unstar_game(slug, token)` |
+| Change or delete imported games | `account_set_imported_game_visibility(slug, "public" or "private", token)`, `account_delete_imported_game(slug, token)` |
+| Public imported games | `public_imported_game(username, game_slug)`, `public_imported_pgn(username, game_slug)` read a game another account imported and made public, by its page address |
+| GIF exports | `ApplicationClient.master_game_gif(game_token, token)`, `public_game_gif(slug, token)`, `annotated_game_gif(book_slug, game_slug, token)`, `public_imported_game_gif(username, slug, token)`, `account_imported_game_gif(slug, token)`; add `orientation="black"` to flip the board |
+| Notifications | `account_notifications(token, page=1, page_size=50)`, `account_mark_notification_read(id, token)`, `account_mark_all_notifications_read(token)`, `account_dismiss_notification(id, token)`, `account_notification_preferences(token)`, `account_update_notification_preferences(token, topics=..., sound_enabled=...)` |
+| Notebook exports | `account_notebooks(token)`, `account_notebook(uuid, token)`, `account_notebook_chapter_pgn(uuid, chapter_id, token)`, `account_notebook_file(uuid, token, password=None)` |
+| Notebook, Remote, Cast and other application APIs | `ApplicationClient.request(path, method=..., body=..., token=...)`, `download(path, token=...)` for files |
 | Scanner upload | `ApplicationClient.scan_position(jpeg_bytes, token)` |
 
 Public game filters include `query`, `archive_player`, `archive_event`, `since`,
@@ -117,6 +129,25 @@ Scanner uploads accept JPEG bytes up to 850,000 bytes. Account tokens and mobile
 or Desktop device sessions have different scopes; use the credential required
 by the endpoint. Do not embed tokens in source files.
 
+GIF, chapter PGN and Notebook file methods return an `ApplicationDownload` with
+`ok`, `status`, `content` (the file bytes when `ok`), `content_type`, `filename`,
+`retry_after` and `error` (the JSON error reply otherwise). GIF exports need a
+registered account, so any personal token or device session works, and they
+share the site limit on GIF exports: honor `retry_after` after a 429. This saves
+a GIF of a public archive game:
+
+```python
+import os
+from classicchess_api import ApplicationClient
+
+gif = ApplicationClient().public_game_gif("tal-vs-larsen-1965", os.environ["CLASSICCHESS_API_TOKEN"])
+if gif.ok:
+    with open(gif.filename or "game.gif", "wb") as handle:
+        handle.write(gif.content)
+else:
+    print(gif.status, gif.error)
+```
+
 The CLI reads `CLASSICCHESS_API_TOKEN` for account commands. Existing installations
 can continue using their previous token environment variable as a fallback.
 The original account helpers on `ClassicChessClient` remain available and raise
@@ -149,7 +180,7 @@ git clone https://github.com/Andromeda1957/classicchess-api-python.git
 cd classicchess-api-python
 python3 -m venv .venv
 source .venv/bin/activate
-python3 -m unittest discover -s classicchess_api
+python3 -m unittest discover -s classicchess_api/tests -t .
 python3 -m pip install .
 ```
 

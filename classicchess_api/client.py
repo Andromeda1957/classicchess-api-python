@@ -52,6 +52,21 @@ def public_player_path(slug, suffix=''):
 
 
 
+def public_slug_segment(value, label='slug'):
+    """One exact catalog slug or ID, safe to place in a URL path."""
+    if not isinstance(value, str) or re.fullmatch(r'[A-Za-z0-9_-]{1,255}', value) is None:
+        raise ApiError(f'Use an exact {label} from the API.', code='invalid_query')
+    return value
+
+
+def public_username_segment(value):
+    """An importer's username from a game page address, safe to place in a URL path."""
+    if (not isinstance(value, str) or re.fullmatch(r'[A-Za-z0-9@.+_-]{1,150}', value) is None
+            or value in ('.', '..')):
+        raise ApiError('Use the exact username from the game page address.', code='invalid_query')
+    return value
+
+
 def normalized_base_url(value: str) -> str:
     return value.rstrip("/") + "/"
 
@@ -304,6 +319,44 @@ class ClassicChessClient:
     def public_events(self, query: str | None = None) -> dict[str, Any]:
         return self.get_json("/api/v1/public/events/", {"q": query})
 
+    def public_event(self, event_slug: str) -> dict[str, Any]:
+        return self.get_json(f"/api/v1/public/events/{public_slug_segment(event_slug, 'event slug')}/")
+
+    def public_event_about(self, event_slug: str) -> dict[str, Any]:
+        return self.get_json(f"/api/v1/public/events/{public_slug_segment(event_slug, 'event slug')}/about/")
+
+    def gallery(
+        self, query: str | None = None, *, page: int = 1, page_size: int = 48,
+    ) -> dict[str, Any]:
+        return self.get_json(
+            "/api/v1/public/gallery/", {"q": query, "page": page, "page_size": page_size},
+        )
+
+    def gallery_photo(self, photo_id: str | int) -> dict[str, Any]:
+        return self.get_json(f"/api/v1/public/gallery/{public_slug_segment(str(photo_id), 'photo ID')}/")
+
+    def beginner_games(self) -> dict[str, Any]:
+        return self.get_json("/api/v1/public/beginner-games/")
+
+    def daily_game(self) -> dict[str, Any]:
+        return self.get_json("/api/v1/public/daily/")
+
+    def site_search(
+        self, query: str, *, kind: str | None = None, page: int | None = None,
+    ) -> dict[str, Any]:
+        if not isinstance(query, str) or not query.strip() or len(query) > 120:
+            raise ApiError('Use a search query of 1 to 120 characters.', code='invalid_query')
+        if kind not in (None, 'games', 'events', 'players'):
+            raise ApiError('kind must be games, events, or players.', code='invalid_query')
+        if page is not None and kind is None:
+            raise ApiError('page requires kind.', code='invalid_query')
+        return self.get_json("/api/v1/public/search/", {"q": query, "kind": kind, "page": page})
+
+    def tablebase(self, fen: str) -> dict[str, Any]:
+        if not isinstance(fen, str) or not fen.strip() or len(fen.encode('utf-8')) > 200:
+            raise ApiError('Use a FEN of at most 200 bytes.', code='invalid_query')
+        return self.get_json("/api/v1/tablebase/", {"fen": fen})
+
     def public_games(
         self,
         query: str = "",
@@ -341,6 +394,17 @@ class ClassicChessClient:
     def public_pgn(self, token: str) -> str:
         game_path = "/".join(extract_public_game_token(token))
         return self.get_text(f"/api/v1/public/games/{game_path}/pgn/")
+
+    def public_imported_game(self, username: str, game_slug: str) -> dict[str, Any]:
+        """A game another account imported and made public, by its page address."""
+        user = public_username_segment(username)
+        game = public_slug_segment(game_slug, 'game slug')
+        return self.get_json('/api/v1/public/imported-games/' + user + '/' + game + '/')
+
+    def public_imported_pgn(self, username: str, game_slug: str) -> str:
+        user = public_username_segment(username)
+        game = public_slug_segment(game_slug, 'game slug')
+        return self.get_text('/api/v1/public/imported-games/' + user + '/' + game + '/pgn/')
 
     def export_public_games(
         self,

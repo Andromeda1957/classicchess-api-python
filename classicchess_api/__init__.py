@@ -1,6 +1,7 @@
 """Import surface for the Classic Chess API client package."""
 
 from .application import ApplicationClient
+from .application import ApplicationDownload
 from .application import ApplicationResponse
 from .client import DEFAULT_BASE_URL
 from .client import USER_AGENT
@@ -19,6 +20,7 @@ __all__ = [
     "ClassicChessClient",
     "ApiError",
     "ApplicationClient",
+    "ApplicationDownload",
     "ApplicationResponse",
     "api_url",
     "extract_master_game_token",

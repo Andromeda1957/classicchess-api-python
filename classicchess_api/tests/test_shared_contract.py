@@ -8,13 +8,13 @@ from unittest.mock import patch
 from urllib.error import HTTPError
 
 from classicchess_api import client as packaged
-from classicchess_api.test_robustness import Response
-from classicchess_api.test_robustness import standalone_client
+from classicchess_api.tests.test_robustness import Response
+from classicchess_api.tests.test_robustness import standalone_client
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 FIXTURE_PATH = ROOT / 'contracts/client-fixtures.json'
 if not FIXTURE_PATH.is_file():
-    FIXTURE_PATH = ROOT / 'docs/api/client-fixtures.json'
+    FIXTURE_PATH = ROOT.parents[1] / 'docs/api/client-fixtures.json'
 FIXTURES = json.loads(FIXTURE_PATH.read_text())
 
 

@@ -1,15 +1,61 @@
 openapi: 3.1.0
 info:
   title: Classic Chess API
-  version: 1.4.0
+  version: 1.7.0
   description: >-
-    Discover curated players, approved biographies, notable games, events and annotated books;
+    Discover curated players, approved biographies, notable games, events, chess history and annotated books;
     search the broader MasterDB; and download PGN. Public reads need no API key.
     Player, event, book and notable-game catalogs are complete lists. Game searches are paginated.
     Relative response URLs resolve against the server origin. Account automation uses scoped bearer tokens.
+    Christian J. Walls' personal over-the-board games (/christian_walls/games/) are deliberately not part of
+    this API; they remain on the website only.
 servers:
   - url: https://classicchess.com
 paths:
+  /api/v1/public/chess-today/:
+    get:
+      summary: Today's sourced chess-history anniversaries
+      description: Uses the site timezone. All reviewed entries are returned in featured order. No API key is required.
+      responses:
+        "200":
+          description: The site date and its history entries.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChessTodayDay' }
+        "503":
+          description: The reviewed catalog is unavailable.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+  /api/v1/public/chess-today/{month}/{day}/:
+    get:
+      summary: Chess-history anniversaries on a specific month and day
+      description: February 29 is available every year. Each entry includes its historical year. No draft or editorial review data is returned.
+      parameters:
+        - name: month
+          in: path
+          required: true
+          schema: { type: integer, minimum: 1, maximum: 12 }
+        - name: day
+          in: path
+          required: true
+          schema: { type: integer, minimum: 1, maximum: 31 }
+      responses:
+        "200":
+          description: Reviewed history entries for the requested anniversary date.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChessTodayDay' }
+        "404":
+          description: Invalid calendar date.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+        "503":
+          description: The reviewed catalog is unavailable.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
   /api/v1/:
     get:
       operationId: discoverApi
@@ -140,9 +186,20 @@ paths:
         - name: orientation
           in: query
           schema: { type: string, enum: [white, black], default: white }
+      description: >-
+        Requires a registered account: a personal API token of any scope, a device session, or a
+        signed-in browser.
+      security:
+        - AccountApiToken: []
+        - MobileSessionToken: []
       responses:
         "200":
           description: Animated GIF.
+          content:
+            image/gif:
+              schema: { type: string, format: binary }
+        "401":
+          description: A registered account is required.
         "429":
           description: GIF export rate limit exceeded.
   /api/v1/public/players/:
@@ -262,6 +319,157 @@ paths:
             text/plain:
               schema: { type: string, description: Complete list of names, one per line. }
         "400": { $ref: '#/components/responses/InvalidQuery' }
+  /api/v1/public/events/{event_slug}/:
+    get:
+      operationId: getCuratedEvent
+      tags: [Curated events]
+      summary: Get one public study-event archive with canonical metadata and links
+      parameters:
+        - $ref: '#/components/parameters/EventSlug'
+      responses:
+        "200":
+          description: One event with counts, series, source labels and API/HTML links.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PublicEventDetail' }
+        "404": { $ref: '#/components/responses/PublicEventNotFound' }
+  /api/v1/public/events/{event_slug}/about/:
+    get:
+      operationId: getCuratedEventAbout
+      tags: [Curated events]
+      summary: Read an event's about page, write-up, photographs, vitals and cross table
+      description: >-
+        The same facts as the event's HTML about page. bio is null when no write-up exists;
+        auto_vitals are always computed from the archive. crosstable is null when the event
+        has no computable table, and otherwise has kind match, tournament, team or incomplete.
+        Image URLs are absolute.
+      parameters:
+        - $ref: '#/components/parameters/EventSlug'
+      responses:
+        "200":
+          description: Event identity plus about-page content.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PublicEventAbout' }
+        "404": { $ref: '#/components/responses/PublicEventNotFound' }
+  /api/v1/public/gallery/:
+    get:
+      operationId: listGalleryPhotos
+      tags: [Gallery]
+      summary: Browse or search the historical photograph gallery with attribution
+      description: >-
+        Paginated in catalog order. q matches players, events, places, scenes, dates and
+        sources, like the gallery page. Every photograph carries its source, license and
+        credit; reuse must honor attribution.required and usage_terms. Image URLs are absolute.
+      parameters:
+        - name: q
+          in: query
+          schema: { type: string, maxLength: 120 }
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: page_size
+          in: query
+          description: Values above 100 are clamped to 100.
+          schema: { type: integer, minimum: 1, default: 48 }
+      responses:
+        "200":
+          description: One page of photographs.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GalleryPage' }
+        "400": { $ref: '#/components/responses/InvalidQuery' }
+        "404":
+          description: page is past the last page.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+  /api/v1/public/gallery/{photo_id}/:
+    get:
+      operationId: getGalleryPhoto
+      tags: [Gallery]
+      summary: Get one gallery photograph with its source, license and credit
+      parameters:
+        - name: photo_id
+          in: path
+          required: true
+          schema: { type: string, maxLength: 160 }
+      responses:
+        "200":
+          description: One photograph.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GalleryPhotoDetail' }
+        "404":
+          description: No photograph with this ID.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+  /api/v1/public/beginner-games/:
+    get:
+      operationId: getBeginnerGames
+      tags: [Curated games]
+      summary: Read the ordered beginner games guide
+      description: Complete ordered curriculum. Each entry has a one-based step, its study focus, and a spoiler-free game summary.
+      responses:
+        "200":
+          description: Guide stages in teaching order.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PublicBeginnerGames' }
+        "503":
+          description: The checked-in curriculum cannot currently be published.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+  /api/v1/public/daily/:
+    get:
+      operationId: getDailyGame
+      tags: [Curated games]
+      summary: Get today's Game of the Day
+      description: >-
+        The same frozen daily pick the /daily/ page redirects to, as spoiler-free identity:
+        the descriptor names the players, result and event without moves. game is null when
+        no daily game can be published. Fetch urls.api_detail for PGN and mainline.
+      responses:
+        "200":
+          description: The server date and today's game.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PublicDailyGame' }
+  /api/v1/public/search/:
+    get:
+      operationId: searchSite
+      tags: [Search]
+      summary: Search the curated archive like the site search box
+      description: >-
+        Without kind, returns the grouped preview the site search overlay shows: counts plus
+        the first players, events and games. With kind, returns one 50-row page of that
+        result kind. Queries may name one player, two players (a matchup), an event, or
+        general game terms, optionally with a year.
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 120 }
+          description: At most 8 searchable terms.
+        - name: kind
+          in: query
+          schema: { type: string, enum: [games, events, players] }
+        - name: page
+          in: query
+          description: Requires kind. Pages past the end return the last page.
+          schema: { type: integer, minimum: 1, default: 1 }
+      responses:
+        "200":
+          description: Grouped preview, or one page of a result kind when kind is supplied.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/SiteSearchPreview'
+                  - $ref: '#/components/schemas/SiteSearchPage'
+        "400": { $ref: '#/components/responses/InvalidQuery' }
   /api/v1/public/games/:
     get:
       operationId: listPublicGames
@@ -333,6 +541,99 @@ paths:
           content:
             text/plain:
               schema: { type: string }
+  /api/v1/public/games/{game_slug}/gif/:
+    get:
+      operationId: getPublicGameGif
+      tags: [Public archive]
+      summary: Export one public archive game as an animated GIF
+      description: >-
+        Requires a registered account: a personal API token of any scope, a device session, or a
+        signed-in browser. Exports share the site's per-account GIF limit.
+      security:
+        - AccountApiToken: []
+        - MobileSessionToken: []
+      parameters:
+        - { name: game_slug, in: path, required: true, schema: { type: string, maxLength: 255 } }
+        - { name: orientation, in: query, schema: { type: string, enum: [white, black], default: white } }
+      responses:
+        "200":
+          description: Animated GIF attachment.
+          content:
+            image/gif:
+              schema: { type: string, format: binary }
+        "400":
+          description: The game cannot be rendered as a GIF (error code invalid_gif).
+        "401":
+          description: No registered account; JSON error authentication_required.
+        "404":
+          description: Game not found.
+        "429":
+          description: GIF export limit reached; honor Retry-After.
+  /api/v1/public/imported-games/{username}/{game_slug}/:
+    get:
+      operationId: getPublicImportedGame
+      tags: [Public archive]
+      summary: A game another account imported and shared publicly
+      description: >-
+        Lookup only, by the username and slug in the game's page address; other accounts' imports
+        are never listed. Private imports return 404 to every caller, including their owner, who uses
+        /api/v1/account/imported-games/ instead.
+      parameters:
+        - { name: username, in: path, required: true, schema: { type: string, maxLength: 150 } }
+        - { name: game_slug, in: path, required: true, schema: { type: string, maxLength: 255 } }
+      responses:
+        "200":
+          description: Imported game detail with the importer's username, PGN, mainline and links.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PublicImportedGame' }
+        "404":
+          description: No public import with that username and slug.
+  /api/v1/public/imported-games/{username}/{game_slug}/pgn/:
+    get:
+      operationId: getPublicImportedGamePgn
+      tags: [Public archive]
+      summary: PGN of a publicly shared imported game
+      parameters:
+        - { name: username, in: path, required: true, schema: { type: string, maxLength: 150 } }
+        - { name: game_slug, in: path, required: true, schema: { type: string, maxLength: 255 } }
+      responses:
+        "200":
+          description: The same PGN text the game page downloads.
+          content:
+            application/x-chess-pgn:
+              schema: { type: string }
+        "404":
+          description: No public import with that username and slug.
+  /api/v1/public/imported-games/{username}/{game_slug}/gif/:
+    get:
+      operationId: getPublicImportedGameGif
+      tags: [Public archive]
+      summary: Export a publicly shared imported game as an animated GIF
+      description: >-
+        Requires a registered account: a personal API token of any scope, a device session, or a
+        signed-in browser. Exports share the site's per-account GIF limit.
+      security:
+        - AccountApiToken: []
+        - MobileSessionToken: []
+      parameters:
+        - { name: username, in: path, required: true, schema: { type: string, maxLength: 150 } }
+        - { name: game_slug, in: path, required: true, schema: { type: string, maxLength: 255 } }
+        - { name: orientation, in: query, schema: { type: string, enum: [white, black], default: white } }
+      responses:
+        "200":
+          description: Animated GIF attachment.
+          content:
+            image/gif:
+              schema: { type: string, format: binary }
+        "400":
+          description: The game cannot be rendered as a GIF (error code invalid_gif).
+        "401":
+          description: No registered account; JSON error authentication_required.
+        "404":
+          description: Game not found.
+        "429":
+          description: GIF export limit reached; honor Retry-After.
   /api/v1/public/games/export/:
     get:
       summary: Export player- and event-backed public archive games
@@ -457,6 +758,35 @@ paths:
           content:
             application/x-chess-pgn:
               schema: { type: string }
+  /api/v1/annotated/books/{book_slug}/games/{game_slug}/gif/:
+    get:
+      operationId: getAnnotatedGameGif
+      tags: [Annotated books]
+      summary: Export one annotated book game as an animated GIF
+      description: >-
+        Requires a registered account: a personal API token of any scope, a device session, or a
+        signed-in browser. Exports share the site's per-account GIF limit.
+      security:
+        - AccountApiToken: []
+        - MobileSessionToken: []
+      parameters:
+        - { name: book_slug, in: path, required: true, schema: { type: string } }
+        - { name: game_slug, in: path, required: true, schema: { type: string } }
+        - { name: orientation, in: query, schema: { type: string, enum: [white, black], default: white } }
+      responses:
+        "200":
+          description: Animated GIF attachment.
+          content:
+            image/gif:
+              schema: { type: string, format: binary }
+        "400":
+          description: The game cannot be rendered as a GIF (error code invalid_gif).
+        "401":
+          description: No registered account; JSON error authentication_required.
+        "404":
+          description: Game not found.
+        "429":
+          description: GIF export limit reached; honor Retry-After.
   /api/v1/opening-explorer/:
     get:
       summary: Explore an opening position
@@ -522,6 +852,38 @@ paths:
       responses:
         "200":
           description: Available opening explorer builds.
+  /api/v1/tablebase/:
+    get:
+      operationId: probeTablebase
+      tags: [Analysis]
+      summary: Probe exact endgame tablebase results for a position
+      description: >-
+        Positions with at most 5 pieces use the site's local Syzygy tables when installed;
+        6 and 7 pieces, and smaller positions when local tables are unavailable, use the
+        Lichess tablebase. 8-piece positions are labelled partial when Lichess answers.
+        Positions with 9 or more pieces return covered false with a message. Each client
+        may make 60 requests per minute.
+      parameters:
+        - name: fen
+          in: query
+          required: true
+          schema: { type: string, maxLength: 200 }
+      responses:
+        "200":
+          description: Tablebase coverage, result and per-move outcomes.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TablebaseProbe' }
+        "400":
+          description: fen is missing or is not a legal position.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+        "429":
+          description: The client exceeded the tablebase request budget.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
   /api/v1/mobile/home/:
     get:
       summary: Native mobile home payload
@@ -781,6 +1143,51 @@ paths:
           description: Token is missing the required scope.
         "404":
           description: Collection not found for this account.
+  /api/v1/account/collections/{collection_id}/items/:
+    post:
+      summary: Add one game to an owned collection
+      description: >-
+        game is a game slug the caller can open: any public archive game, a public imported
+        game, or one of the caller's own imports. Adding a game already in the collection is
+        not an error; it returns 200 with changed false. Safe to retry.
+      security:
+        - AccountApiToken: []
+        - MobileSessionToken: []
+      x-required-scopes: [library:write]
+      parameters:
+        - in: path
+          name: collection_id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [game]
+              additionalProperties: false
+              properties:
+                game: { type: string, minLength: 1, description: Game slug, such as urls.api_detail's last segment. }
+      responses:
+        "201":
+          description: Game added; the new collection item.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AccountCollectionItem' }
+        "200":
+          description: Game was already in the collection; the existing item.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AccountCollectionItem' }
+        "400":
+          description: Body is not exactly one game slug.
+        "401":
+          description: Missing or invalid bearer token.
+        "403":
+          description: Token is missing the required scope.
+        "404":
+          description: Collection not found for this account, or no game the caller can open has this slug.
   /api/v1/account/collections/import/:
     post:
       summary: Import public archive player games into an account collection
@@ -866,6 +1273,496 @@ paths:
           description: Imported game detail with PGN and board-ready mainline.
         "404":
           description: Imported game not found for this account.
+    patch:
+      summary: Change an owned imported game's visibility
+      description: >-
+        Public games are visible to everyone and can be starred or collected by other accounts.
+        Making a game private hides it from other accounts' collections and starred lists
+        without deleting their references. Safe to retry.
+      security:
+        - AccountApiToken: []
+        - MobileSessionToken: []
+      x-required-scopes: [library:write]
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [visibility]
+              additionalProperties: false
+              properties:
+                visibility: { type: string, enum: [private, public] }
+      responses:
+        "200":
+          description: Updated imported game detail; changed is false when visibility already matched.
+        "400":
+          description: Body is not exactly one supported visibility.
+        "401":
+          description: Missing or invalid bearer token.
+        "403":
+          description: Token is missing the required scope.
+        "404":
+          description: Imported game not found for this account.
+    delete:
+      summary: Permanently delete an owned imported game
+      description: Also removes it from every collection and starred list that referenced it. This cannot be undone.
+      security:
+        - AccountApiToken: []
+        - MobileSessionToken: []
+      x-required-scopes: [library:write]
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Imported game deleted.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [deleted, slug, message]
+                properties:
+                  deleted: { const: true }
+                  slug: { type: string }
+                  message: { type: string }
+        "401":
+          description: Missing or invalid bearer token.
+        "403":
+          description: Token is missing the required scope.
+        "404":
+          description: Imported game not found for this account.
+  /api/v1/account/imported-games/{slug}/gif/:
+    get:
+      summary: Export an owned imported game as an animated GIF
+      description: Either visibility. Shares the site's per-account GIF limit.
+      security:
+        - AccountApiToken: []
+        - MobileSessionToken: []
+      x-required-scopes: [library:read]
+      parameters:
+        - { name: slug, in: path, required: true, schema: { type: string } }
+        - { name: orientation, in: query, schema: { type: string, enum: [white, black], default: white } }
+      responses:
+        "200":
+          description: Animated GIF attachment.
+          content:
+            image/gif:
+              schema: { type: string, format: binary }
+        "400":
+          description: The game cannot be rendered as a GIF.
+        "401":
+          description: Missing or invalid bearer token. Browser cookie sessions are not accepted.
+        "403":
+          description: Personal API token is missing the required scope.
+        "404":
+          description: Imported game not found for this account.
+        "429":
+          description: GIF export limit reached; honor Retry-After.
+  /api/v1/account/notifications/:
+    get:
+      summary: The account's notification inbox
+      description: Newest first, as the website inbox lists them. unread_count matches the website bell.
+      security:
+        - AccountApiToken: []
+        - MobileSessionToken: []
+      x-required-scopes: [notifications:read]
+      parameters:
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: page_size, in: query, schema: { type: integer, minimum: 1, maximum: 100 } }
+      responses:
+        "200":
+          description: One inbox page.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AccountNotificationPage' }
+        "400":
+          description: Invalid page or page_size.
+        "401":
+          description: Missing or invalid bearer token. Browser cookie sessions are not accepted.
+        "403":
+          description: Personal API token is missing the required scope.
+  /api/v1/account/notifications/read-all/:
+    post:
+      summary: Mark every inbox notification read
+      security:
+        - AccountApiToken: []
+        - MobileSessionToken: []
+      x-required-scopes: [notifications:write]
+      responses:
+        "200":
+          description: The number marked and the new unread count. Safe to retry.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AccountNotificationChange' }
+        "401":
+          description: Missing or invalid bearer token. Browser cookie sessions are not accepted.
+        "403":
+          description: Personal API token is missing the required scope.
+  /api/v1/account/notifications/preferences/:
+    get:
+      summary: Per-topic on-site notification choices and sound
+      security:
+        - AccountApiToken: []
+        - MobileSessionToken: []
+      x-required-scopes: [notifications:read]
+      responses:
+        "200":
+          description: Every topic with its effective choice and default.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AccountNotificationPreferences' }
+        "401":
+          description: Missing or invalid bearer token. Browser cookie sessions are not accepted.
+        "403":
+          description: Personal API token is missing the required scope.
+    patch:
+      summary: Change some notification choices
+      description: >-
+        Only the topics and sound setting named change; every other topic keeps its current
+        effective choice.
+      security:
+        - AccountApiToken: []
+        - MobileSessionToken: []
+      x-required-scopes: [notifications:write]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                topics:
+                  type: object
+                  description: Topic keys from GET mapped to true or false.
+                  additionalProperties: { type: boolean }
+                sound_enabled: { type: boolean }
+      responses:
+        "200":
+          description: The updated preferences.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AccountNotificationPreferences' }
+        "400":
+          description: Unknown topic or non-boolean value; nothing changed.
+        "401":
+          description: Missing or invalid bearer token. Browser cookie sessions are not accepted.
+        "403":
+          description: Personal API token is missing the required scope.
+  /api/v1/account/notifications/{notification_id}/:
+    delete:
+      summary: Dismiss one notification from the inbox
+      security:
+        - AccountApiToken: []
+        - MobileSessionToken: []
+      x-required-scopes: [notifications:write]
+      parameters:
+        - { name: notification_id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Dismissed, with the new unread count.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AccountNotificationChange' }
+        "401":
+          description: Missing or invalid bearer token. Browser cookie sessions are not accepted.
+        "403":
+          description: Personal API token is missing the required scope.
+        "404":
+          description: Not in this account's inbox.
+  /api/v1/account/notifications/{notification_id}/read/:
+    post:
+      summary: Mark one notification read
+      security:
+        - AccountApiToken: []
+        - MobileSessionToken: []
+      x-required-scopes: [notifications:write]
+      parameters:
+        - { name: notification_id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Marked read (safe to retry), with the new unread count.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AccountNotificationChange' }
+        "401":
+          description: Missing or invalid bearer token. Browser cookie sessions are not accepted.
+        "403":
+          description: Personal API token is missing the required scope.
+        "404":
+          description: Not in this account's inbox.
+  /api/v1/account/notebooks/:
+    get:
+      summary: Notebooks the account owns or was invited to
+      description: The same set as My Notebooks, most recently updated first.
+      security:
+        - AccountApiToken: []
+        - MobileSessionToken: []
+      x-required-scopes: [notebooks:read]
+      responses:
+        "200":
+          description: Notebook summaries with export links.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AccountNotebooks' }
+        "401":
+          description: Missing or invalid bearer token. Browser cookie sessions are not accepted.
+        "403":
+          description: Personal API token is missing the required scope.
+  /api/v1/account/notebooks/{notebook_uuid}/:
+    get:
+      summary: One Notebook's folders and chapters
+      description: >-
+        Any Notebook the account can open, including public and unlisted Notebooks it is not a member
+        of. Chapter api_pgn links are empty when this account cannot export the Notebook.
+      security:
+        - AccountApiToken: []
+        - MobileSessionToken: []
+      x-required-scopes: [notebooks:read]
+      parameters:
+        - { name: notebook_uuid, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Notebook summary, sections and chapters.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AccountNotebookDetail' }
+        "401":
+          description: Missing or invalid bearer token. Browser cookie sessions are not accepted.
+        "403":
+          description: Personal API token is missing the required scope.
+        "404":
+          description: Notebook not found or not visible to this account.
+  /api/v1/account/notebooks/{notebook_uuid}/file/:
+    get:
+      summary: Download the whole Notebook as a .ccnb file
+      description: >-
+        Members may always export. Other accounts may export only when the owner allowed public
+        exports.
+      security:
+        - AccountApiToken: []
+        - MobileSessionToken: []
+      x-required-scopes: [notebooks:read]
+      parameters:
+        - { name: notebook_uuid, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Unencrypted Classic Chess Notebook file.
+          content:
+            application/vnd.classicchess.notebook:
+              schema: { type: string, format: binary }
+        "401":
+          description: Missing or invalid bearer token. Browser cookie sessions are not accepted.
+        "403":
+          description: Personal API token is missing the required scope.
+        "404":
+          description: Notebook not found, not visible, or not exportable by this account.
+    post:
+      summary: Download the Notebook as a password-protected .ccnb file
+      description: Members only. The password encrypts this one file and is not stored.
+      security:
+        - AccountApiToken: []
+        - MobileSessionToken: []
+      x-required-scopes: [notebooks:read]
+      parameters:
+        - { name: notebook_uuid, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              additionalProperties: false
+              properties:
+                password: { type: string, minLength: 1 }
+      responses:
+        "200":
+          description: Encrypted Classic Chess Notebook file.
+          content:
+            application/vnd.classicchess.notebook:
+              schema: { type: string, format: binary }
+        "400":
+          description: Missing or unacceptable password.
+        "401":
+          description: Missing or invalid bearer token. Browser cookie sessions are not accepted.
+        "403":
+          description: Personal API token is missing the required scope.
+        "404":
+          description: Notebook not found, or the account is not a member.
+  /api/v1/account/notebooks/{notebook_uuid}/chapters/{chapter_id}/pgn/:
+    get:
+      summary: Download one Notebook chapter as PGN
+      description: The same export rule as the whole-Notebook file.
+      security:
+        - AccountApiToken: []
+        - MobileSessionToken: []
+      x-required-scopes: [notebooks:read]
+      parameters:
+        - { name: notebook_uuid, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: chapter_id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Chapter PGN attachment.
+          content:
+            application/x-chess-pgn:
+              schema: { type: string }
+        "401":
+          description: Missing or invalid bearer token. Browser cookie sessions are not accepted.
+        "403":
+          description: Personal API token is missing the required scope.
+        "404":
+          description: Notebook or chapter not found, or not exportable by this account.
+  /api/v1/account/starred/players/:
+    get:
+      summary: List the account's starred players
+      description: Most recently starred first.
+      security:
+        - AccountApiToken: []
+        - MobileSessionToken: []
+      x-required-scopes: [library:read]
+      parameters:
+        - in: query
+          name: page
+          schema: { type: integer, minimum: 1 }
+        - in: query
+          name: page_size
+          schema: { type: integer, minimum: 1, maximum: 100 }
+      responses:
+        "200":
+          description: Paginated starred players.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AccountStarredPlayers' }
+        "400":
+          description: Invalid pagination.
+        "401":
+          description: Missing or invalid bearer token.
+        "403":
+          description: Token is missing the required scope.
+  /api/v1/account/starred/players/{player_slug}/:
+    put:
+      summary: Star a public archive player
+      description: Idempotent. Starring an already starred player returns changed false.
+      security:
+        - AccountApiToken: []
+        - MobileSessionToken: []
+      x-required-scopes: [library:write]
+      parameters:
+        - $ref: '#/components/parameters/PlayerSlug'
+      responses:
+        "200":
+          description: Resulting star state.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AccountStarState' }
+        "401":
+          description: Missing or invalid bearer token.
+        "403":
+          description: Token is missing the required scope.
+        "404":
+          description: Player has no public archive.
+    delete:
+      summary: Unstar a public archive player
+      description: Idempotent. Unstarring a player that is not starred returns changed false.
+      security:
+        - AccountApiToken: []
+        - MobileSessionToken: []
+      x-required-scopes: [library:write]
+      parameters:
+        - $ref: '#/components/parameters/PlayerSlug'
+      responses:
+        "200":
+          description: Resulting star state.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AccountStarState' }
+        "401":
+          description: Missing or invalid bearer token.
+        "403":
+          description: Token is missing the required scope.
+        "404":
+          description: Player has no public archive.
+  /api/v1/account/starred/games/:
+    get:
+      summary: List the account's starred games
+      description: >-
+        Most recently starred first. A starred game another account imported and later made
+        private is omitted.
+      security:
+        - AccountApiToken: []
+        - MobileSessionToken: []
+      x-required-scopes: [library:read]
+      parameters:
+        - in: query
+          name: page
+          schema: { type: integer, minimum: 1 }
+        - in: query
+          name: page_size
+          schema: { type: integer, minimum: 1, maximum: 100 }
+      responses:
+        "200":
+          description: Paginated starred games.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AccountStarredGames' }
+        "400":
+          description: Invalid pagination.
+        "401":
+          description: Missing or invalid bearer token.
+        "403":
+          description: Token is missing the required scope.
+  /api/v1/account/starred/games/{game_slug}/:
+    put:
+      summary: Star a game the caller can open
+      description: Idempotent. Any public archive game, public imported game, or the caller's own import can be starred.
+      security:
+        - AccountApiToken: []
+        - MobileSessionToken: []
+      x-required-scopes: [library:write]
+      parameters:
+        - { in: path, name: game_slug, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Resulting star state.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AccountStarState' }
+        "401":
+          description: Missing or invalid bearer token.
+        "403":
+          description: Token is missing the required scope.
+        "404":
+          description: No game the caller can open has this slug.
+    delete:
+      summary: Unstar a game
+      description: Idempotent. A game the caller already starred can be unstarred even after its importer made it private.
+      security:
+        - AccountApiToken: []
+        - MobileSessionToken: []
+      x-required-scopes: [library:write]
+      parameters:
+        - { in: path, name: game_slug, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Resulting star state.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AccountStarState' }
+        "401":
+          description: Missing or invalid bearer token.
+        "403":
+          description: Token is missing the required scope.
+        "404":
+          description: No such game is starred or openable by the caller.
   /api/v1/public/games/{player_slug}/{game_slug}/:
     get:
       summary: Compatibility URL for a game in a player's archive
@@ -931,6 +1828,12 @@ components:
       required: true
       description: Exact slug from the curated-player catalog, not a display name or MasterDB identity.
       schema: { type: string, example: mikhail-tal }
+    EventSlug:
+      name: event_slug
+      in: path
+      required: true
+      description: Exact slug from the curated-event catalog.
+      schema: { type: string, example: wcc-1972-fischer-spassky }
   responses:
     InvalidQuery:
       description: Query exceeds its bounds or requests an unsupported format.
@@ -942,7 +1845,82 @@ components:
       content:
         application/json:
           schema: { $ref: '#/components/schemas/ApiError' }
+    PublicEventNotFound:
+      description: No public study event with this slug.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
   schemas:
+    ChessTodayDay:
+      type: object
+      additionalProperties: false
+      required: [month, day, timezone, url, featured_entry_id, entries]
+      properties:
+        date: { type: string, format: date, description: Current site date; only present on the today endpoint. }
+        month: { type: integer, minimum: 1, maximum: 12 }
+        day: { type: integer, minimum: 1, maximum: 31 }
+        timezone: { type: string, description: IANA timezone used for daily notification selection. }
+        url: { type: string, description: Relative API URL for this month and day. }
+        featured_entry_id: { type: [string, 'null'] }
+        entries:
+          type: array
+          maxItems: 20
+          items: { $ref: '#/components/schemas/ChessTodayEntry' }
+    ChessTodayEntry:
+      type: object
+      additionalProperties: false
+      required: [id, category, year, text, details, sources, related, target_url, photograph]
+      properties:
+        id: { type: string }
+        category: { type: string, enum: [birth, death, game, event, rating_title, culture, technology, publication, rules] }
+        year: { type: integer, minimum: 1, maximum: 9999 }
+        text: { type: string, maxLength: 500, description: The concise text used in daily notifications. }
+        details:
+          type: array
+          maxItems: 10
+          items: { type: string, maxLength: 500 }
+        sources:
+          type: array
+          maxItems: 10
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, url, title, publisher]
+            properties:
+              id: { type: string }
+              url: { type: string, format: uri }
+              title: { type: string }
+              publisher: { type: string }
+        related:
+          type: array
+          maxItems: 10
+          items:
+            type: object
+            additionalProperties: false
+            required: [kind, identifier, label, url]
+            properties:
+              kind: { type: string, enum: [game, event, player, gallery, book, daily] }
+              identifier: { type: string }
+              label: { type: string }
+              url: { type: [string, 'null'], description: Relative public URL; null when the related public item is unavailable. }
+        target_url: { type: string, description: Notification destination; a public archive item or this date's JSON as fallback. }
+        photograph:
+          type: [object, 'null']
+          additionalProperties: false
+          description: A photograph with a verified event association, when available.
+          required: [image_url, gallery_url, alt_text, credit, artist, source_name, source_url, license, license_url, width, height]
+          properties:
+            image_url: { type: string }
+            gallery_url: { type: string }
+            alt_text: { type: string }
+            credit: { type: string }
+            artist: { type: string }
+            source_name: { type: string }
+            source_url: { type: string, format: uri }
+            license: { type: string }
+            license_url: { type: string }
+            width: { type: integer }
+            height: { type: integer }
     MasterGame:
       type: object
       description: MasterDB search metadata. Tokens identify MasterDB games, not curated archive slugs.
@@ -1307,6 +2285,521 @@ components:
         next: { type: [string, 'null'] }
         previous: { type: [string, 'null'] }
         results: { type: array, items: { $ref: '#/components/schemas/AnnotatedGame' } }
+    PublicEvent:
+      type: object
+      required: [name, slug, year, game_count, expected_game_count, event_type, series, source, urls]
+      properties:
+        name: { type: string }
+        slug: { type: string }
+        year: { type: [integer, 'null'] }
+        game_count: { type: integer }
+        expected_game_count: { type: integer }
+        event_type:
+          type: object
+          required: [key, label]
+          properties:
+            key: { type: string }
+            label: { type: string }
+        series:
+          anyOf:
+            - $ref: '#/components/schemas/EventSeriesIdentity'
+            - { type: 'null' }
+        source: { type: object }
+        urls: { $ref: '#/components/schemas/ResourceLinks' }
+    EventSeriesIdentity:
+      type: object
+      required: [name, slug]
+      properties:
+        name: { type: string }
+        slug: { type: string }
+    PublicEventDetail:
+      type: object
+      required: [source, event]
+      properties:
+        source: { const: public }
+        event: { $ref: '#/components/schemas/PublicEvent' }
+    LabelValue:
+      type: object
+      required: [label, value]
+      properties:
+        label: { type: string }
+        value: { type: string }
+    EventBiography:
+      type: object
+      required: [tagline, lede, vitals, sections, numbers, quotes, images, sources]
+      properties:
+        tagline: { type: string }
+        lede: { type: string }
+        vitals: { type: array, items: { type: object }, description: Authored label/value facts. }
+        sections: { type: array, items: { type: object }, description: Each has heading and body paragraphs. }
+        numbers: { type: array, items: { type: object }, description: Each has value and label. }
+        quotes: { type: array, items: { type: object }, description: Each has text and source. }
+        images:
+          type: array
+          items:
+            type: object
+            required: [url, caption, credit]
+            properties:
+              url: { type: string, format: uri }
+              caption: { type: string }
+              credit: { type: string }
+        sources: { type: array, items: { type: object }, description: Each has label and url. }
+    PublicEventAbout:
+      type: object
+      required: [source, event, dates, location, auto_vitals, bio, crosstable]
+      properties:
+        source: { const: public }
+        event: { $ref: '#/components/schemas/PublicEvent' }
+        dates: { type: string }
+        location: { type: string }
+        auto_vitals: { type: array, items: { $ref: '#/components/schemas/LabelValue' } }
+        bio:
+          anyOf:
+            - $ref: '#/components/schemas/EventBiography'
+            - { type: 'null' }
+        crosstable:
+          type: [object, 'null']
+          description: >-
+            Computed table. kind is match (players, rows, official, headline),
+            tournament (standings, grid, headline, player_count), team, or incomplete.
+            player_slug appears on linkable player rows.
+    GalleryPlayer:
+      type: object
+      required: [name, slug, api_detail]
+      properties:
+        name: { type: string }
+        slug: { type: [string, 'null'], description: Curated player slug when the pictured player has a public archive. }
+        api_detail: { type: [string, 'null'] }
+    GalleryEventLink:
+      type: object
+      required: [name, slug, urls]
+      properties:
+        name: { type: string }
+        slug: { type: string }
+        urls: { $ref: '#/components/schemas/ResourceLinks' }
+    GalleryPhoto:
+      type: object
+      required: [id, players, date, date_detail, display_date, year, event, event_link, location, scene, alt_text, image, source, attribution, urls]
+      properties:
+        id: { type: string }
+        players: { type: array, items: { $ref: '#/components/schemas/GalleryPlayer' } }
+        date: { type: string }
+        date_detail: { type: string }
+        display_date: { type: string }
+        year: { type: string, description: Four-digit year or empty when undated. }
+        event: { type: string }
+        event_link:
+          anyOf:
+            - $ref: '#/components/schemas/GalleryEventLink'
+            - { type: 'null' }
+        location: { type: string }
+        scene: { type: string }
+        alt_text: { type: string }
+        image:
+          type: object
+          required: [url, width, height, bytes]
+          properties:
+            url: { type: string, format: uri }
+            width: { type: integer }
+            height: { type: integer }
+            bytes: { type: integer }
+        source:
+          type: object
+          required: [kind, id, name, title, reference, url, original_url, width, height, sha1]
+          properties:
+            kind: { type: string }
+            id: { type: string }
+            name: { type: string }
+            title: { type: string }
+            reference: { type: string }
+            url: { type: string, format: uri }
+            original_url: { type: string, format: uri }
+            width: { type: integer }
+            height: { type: integer }
+            sha1: { type: string }
+        attribution:
+          type: object
+          required: [artist, credit, license, license_url, usage_terms, required]
+          properties:
+            artist: { type: string }
+            credit: { type: string }
+            license: { type: string }
+            license_url: { type: string }
+            usage_terms: { type: string }
+            required: { type: boolean }
+        urls: { $ref: '#/components/schemas/ResourceLinks' }
+    GalleryPage:
+      type: object
+      required: [source, query, catalog_count, count, page, page_size, page_count, has_next, has_previous, results]
+      properties:
+        source: { const: public }
+        query: { type: string }
+        catalog_count: { type: integer, minimum: 0 }
+        count: { type: integer, minimum: 0 }
+        page: { type: integer, minimum: 1 }
+        page_size: { type: integer, minimum: 1, maximum: 100 }
+        page_count: { type: integer, minimum: 1 }
+        has_next: { type: boolean }
+        has_previous: { type: boolean }
+        results: { type: array, items: { $ref: '#/components/schemas/GalleryPhoto' } }
+    GalleryPhotoDetail:
+      type: object
+      required: [source, photo]
+      properties:
+        source: { const: public }
+        photo: { $ref: '#/components/schemas/GalleryPhoto' }
+    PublicGameSummary:
+      type: object
+      required: [token, slug, player, display_white, display_black, result, date, year, event, descriptor, urls]
+      properties:
+        token: { type: string }
+        slug: { type: string }
+        player:
+          anyOf:
+            - $ref: '#/components/schemas/PlayerIdentity'
+            - { type: 'null' }
+        display_white: { type: string }
+        display_black: { type: string }
+        result: { type: string }
+        date: { type: string }
+        year: { type: string }
+        event: { type: string }
+        descriptor: { type: string, description: Server-owned spoiler-free matchup, result and event line. }
+        urls: { $ref: '#/components/schemas/ResourceLinks' }
+    PublicDailyGame:
+      type: object
+      required: [source, date, game]
+      properties:
+        source: { const: public }
+        date: { type: string, format: date }
+        game:
+          anyOf:
+            - $ref: '#/components/schemas/PublicGameSummary'
+            - { type: 'null' }
+    PublicBeginnerGames:
+      type: object
+      required: [source, count, stages, urls]
+      properties:
+        source: { const: public }
+        count: { type: integer, minimum: 0 }
+        stages:
+          type: array
+          items:
+            type: object
+            required: [key, label, entries]
+            properties:
+              key: { type: string }
+              label: { type: string }
+              entries:
+                type: array
+                items:
+                  type: object
+                  required: [step, study_focus, game]
+                  properties:
+                    step: { type: integer, minimum: 1 }
+                    study_focus: { type: string }
+                    game: { $ref: '#/components/schemas/PublicGameSummary' }
+        urls: { $ref: '#/components/schemas/ResourceLinks' }
+    SearchCounts:
+      type: object
+      required: [players, events, games]
+      properties:
+        players: { type: integer, minimum: 0 }
+        events: { type: integer, minimum: 0 }
+        games: { type: integer, minimum: 0 }
+    SearchPlayer:
+      type: object
+      required: [name, slug, game_count, archive_bucket, portrait, urls]
+      properties:
+        name: { type: string }
+        slug: { type: string }
+        game_count: { type: integer }
+        archive_bucket: { type: string }
+        portrait: { type: string }
+        urls: { $ref: '#/components/schemas/ResourceLinks' }
+    SearchEvent:
+      type: object
+      required: [name, slug, type, year, game_count, series, urls]
+      properties:
+        name: { type: string }
+        slug: { type: string }
+        type: { type: string }
+        year: { type: [integer, 'null'] }
+        game_count: { type: integer }
+        series: { type: string }
+        urls: { $ref: '#/components/schemas/ResourceLinks' }
+    SearchGame:
+      type: object
+      required: [slug, white, black, result, date, event, opening, url, memberships, urls]
+      properties:
+        slug: { type: string }
+        white: { type: string }
+        black: { type: string }
+        result: { type: string }
+        date: { type: string }
+        event: { type: string }
+        opening: { type: string }
+        url: { type: string }
+        memberships: { type: array, items: { type: object } }
+        urls: { $ref: '#/components/schemas/ResourceLinks' }
+    SiteSearchPreview:
+      type: object
+      required: [source, mode, query, intent, counts, players, events, games, html_urls]
+      properties:
+        source: { const: public }
+        mode: { const: curated }
+        query: { type: string }
+        intent: { type: string, enum: [matchup, player, event, games] }
+        counts: { $ref: '#/components/schemas/SearchCounts' }
+        players: { type: array, items: { $ref: '#/components/schemas/SearchPlayer' } }
+        events: { type: array, items: { $ref: '#/components/schemas/SearchEvent' } }
+        games: { type: array, items: { $ref: '#/components/schemas/SearchGame' } }
+        html_urls: { $ref: '#/components/schemas/ResourceLinks' }
+    SiteSearchPage:
+      type: object
+      required: [source, mode, query, intent, kind, counts, count, page, page_size, page_count, has_next, has_previous, results, html_urls]
+      properties:
+        source: { const: public }
+        mode: { const: curated }
+        query: { type: string }
+        intent: { type: string, enum: [matchup, player, event, games] }
+        kind: { type: string, enum: [games, events, players] }
+        counts: { $ref: '#/components/schemas/SearchCounts' }
+        count: { type: integer, minimum: 0 }
+        page: { type: integer, minimum: 1 }
+        page_size: { type: integer, minimum: 1 }
+        page_count: { type: integer, minimum: 1 }
+        has_next: { type: boolean }
+        has_previous: { type: boolean }
+        results: { type: array, items: { type: object }, description: SearchGame, SearchEvent or SearchPlayer rows for kind. }
+        html_urls: { $ref: '#/components/schemas/ResourceLinks' }
+    TablebaseMove:
+      type: object
+      required: [uci, san, wdl, zeroing]
+      properties:
+        uci: { type: string }
+        san: { type: string }
+        wdl: { type: string, description: Outcome for the side making this move. }
+        zeroing: { type: boolean }
+        dtz: { type: integer }
+    TablebaseProbe:
+      type: object
+      required: [available, covered, coverage, set, maximumPieces, moves]
+      properties:
+        available: { type: boolean, description: Whether local Syzygy tables are installed. }
+        covered: { type: boolean }
+        coverage: { type: string, enum: [complete, partial, uncovered] }
+        set: { type: string }
+        maximumPieces: { type: integer }
+        positionPieces: { type: integer }
+        sourceLabel: { type: string }
+        wdl: { type: string, enum: [win, cursed-win, draw, blessed-loss, loss] }
+        dtz: { type: integer }
+        moves: { type: array, items: { $ref: '#/components/schemas/TablebaseMove' } }
+        message: { type: string }
+    AccountGame:
+      type: object
+      required: [token, white, black, display_white, display_black, result, event, date, imported_visibility, urls]
+      properties:
+        token: { type: string }
+        white: { type: string }
+        black: { type: string }
+        display_white: { type: string }
+        display_black: { type: string }
+        result: { type: string }
+        event: { type: string }
+        site: { type: string }
+        date: { type: string }
+        played_on: { type: [string, 'null'], format: date }
+        round: { type: string }
+        white_elo: { type: [integer, 'null'] }
+        black_elo: { type: [integer, 'null'] }
+        eco: { type: string }
+        opening: { type: string }
+        move_count: { type: [integer, 'null'] }
+        imported_visibility: { type: string }
+        imported_at: { type: [string, 'null'], format: date-time }
+        urls: { $ref: '#/components/schemas/ResourceLinks' }
+    AccountCollectionItem:
+      allOf:
+        - $ref: '#/components/schemas/AccountGame'
+        - type: object
+          required: [collection_item_id, added_at, changed, message]
+          properties:
+            collection_item_id: { type: integer }
+            added_at: { type: [string, 'null'], format: date-time }
+            changed: { type: boolean }
+            message: { type: string }
+    AccountStarredGame:
+      allOf:
+        - $ref: '#/components/schemas/AccountGame'
+        - type: object
+          required: [starred_at]
+          properties:
+            starred_at: { type: string, format: date-time }
+    AccountStarredPlayer:
+      type: object
+      required: [name, slug, game_count, starred_at, urls]
+      properties:
+        name: { type: string }
+        slug: { type: string }
+        game_count: { type: integer }
+        starred_at: { type: string, format: date-time }
+        urls: { $ref: '#/components/schemas/ResourceLinks' }
+    AccountStarredGames:
+      type: object
+      required: [count, page, page_size, page_count, results]
+      properties:
+        count: { type: integer, minimum: 0 }
+        page: { type: integer, minimum: 1 }
+        page_size: { type: integer, minimum: 1, maximum: 100 }
+        page_count: { type: integer, minimum: 1 }
+        results: { type: array, items: { $ref: '#/components/schemas/AccountStarredGame' } }
+    AccountStarredPlayers:
+      type: object
+      required: [count, page, page_size, page_count, results]
+      properties:
+        count: { type: integer, minimum: 0 }
+        page: { type: integer, minimum: 1 }
+        page_size: { type: integer, minimum: 1, maximum: 100 }
+        page_count: { type: integer, minimum: 1 }
+        results: { type: array, items: { $ref: '#/components/schemas/AccountStarredPlayer' } }
+    AccountStarState:
+      type: object
+      required: [slug, starred, changed, message]
+      properties:
+        slug: { type: string }
+        starred: { type: boolean }
+        changed: { type: boolean }
+        message: { type: string }
+    PublicImportedGame:
+      type: object
+      required: [token, username, white, black, display_white, display_black, result, event, site, date, round,
+                 white_elo, black_elo, eco, opening, move_count, imported_at, pgn, mainline, urls]
+      properties:
+        token: { type: string }
+        username: { type: string }
+        white: { type: string }
+        black: { type: string }
+        display_white: { type: string }
+        display_black: { type: string }
+        result: { type: string }
+        event: { type: string }
+        site: { type: string }
+        date: { type: string }
+        round: { type: string }
+        white_elo: { type: [integer, "null"] }
+        black_elo: { type: [integer, "null"] }
+        eco: { type: string }
+        opening: { type: string }
+        move_count: { type: [integer, "null"] }
+        imported_at: { type: [string, "null"] }
+        pgn: { type: string }
+        mainline: { type: object }
+        urls: { $ref: '#/components/schemas/ResourceLinks' }
+    AccountNotification:
+      type: object
+      required: [id, topic, topic_label, title, body, url, published_at, read, urls]
+      properties:
+        id: { type: integer }
+        topic: { type: string }
+        topic_label: { type: string }
+        title: { type: string }
+        body: { type: string }
+        url: { type: string }
+        published_at: { type: string }
+        read: { type: boolean }
+        urls: { $ref: '#/components/schemas/ResourceLinks' }
+    AccountNotificationPage:
+      type: object
+      required: [unread_count, sound_enabled, count, page, page_size, page_count, results]
+      properties:
+        unread_count: { type: integer }
+        sound_enabled: { type: boolean }
+        count: { type: integer }
+        page: { type: integer }
+        page_size: { type: integer }
+        page_count: { type: integer }
+        results:
+          type: array
+          items: { $ref: '#/components/schemas/AccountNotification' }
+    AccountNotificationChange:
+      type: object
+      required: [ok, unread_count]
+      properties:
+        ok: { type: boolean }
+        id: { type: integer }
+        marked: { type: integer }
+        unread_count: { type: integer }
+    AccountNotificationTopic:
+      type: object
+      required: [key, label, description, enabled, default]
+      properties:
+        key: { type: string }
+        label: { type: string }
+        description: { type: string }
+        enabled: { type: boolean }
+        default: { type: boolean }
+    AccountNotificationPreferences:
+      type: object
+      required: [sound_enabled, topics]
+      properties:
+        sound_enabled: { type: boolean }
+        topics:
+          type: array
+          items: { $ref: '#/components/schemas/AccountNotificationTopic' }
+    AccountNotebook:
+      type: object
+      required: [uuid, title, description, visibility, allow_public_exports, role, can_export, chapter_count,
+                 updated_at, urls]
+      properties:
+        uuid: { type: string, format: uuid }
+        title: { type: string }
+        description: { type: string }
+        visibility: { type: string }
+        allow_public_exports: { type: boolean }
+        role:
+          type: [string, "null"]
+          description: owner or the collaborator role for members; null for a Notebook opened only through its visibility.
+        can_export: { type: boolean }
+        chapter_count: { type: integer }
+        updated_at: { type: string }
+        urls: { $ref: '#/components/schemas/ResourceLinks' }
+    AccountNotebooks:
+      type: object
+      required: [count, results]
+      properties:
+        count: { type: integer }
+        results:
+          type: array
+          items: { $ref: '#/components/schemas/AccountNotebook' }
+    AccountNotebookDetail:
+      type: object
+      required: [notebook, sections, chapters]
+      properties:
+        notebook: { $ref: '#/components/schemas/AccountNotebook' }
+        sections:
+          type: array
+          items:
+            type: object
+            required: [id, parent_id, title, sort_order]
+            properties:
+              id: { type: integer }
+              parent_id: { type: [integer, "null"] }
+              title: { type: string }
+              sort_order: { type: integer }
+        chapters:
+          type: array
+          items:
+            type: object
+            required: [id, title, section_id, sort_order, updated_at, urls]
+            properties:
+              id: { type: integer }
+              title: { type: string }
+              section_id: { type: [integer, "null"] }
+              sort_order: { type: integer }
+              updated_at: { type: string }
+              urls: { $ref: '#/components/schemas/ResourceLinks' }
   securitySchemes:
     AccountApiToken:
       type: http
