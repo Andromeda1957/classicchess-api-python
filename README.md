@@ -95,6 +95,7 @@ Missing biographies are `None`, and notable lists can be empty.
 | GIF exports | `ApplicationClient.master_game_gif(game_token, token)`, `public_game_gif(slug, token)`, `annotated_game_gif(book_slug, game_slug, token)`, `public_imported_game_gif(username, slug, token)`, `account_imported_game_gif(slug, token)`; add `orientation="black"` to flip the board |
 | Notifications | `account_notifications(token, page=1, page_size=50)`, `account_mark_notification_read(id, token)`, `account_mark_all_notifications_read(token)`, `account_dismiss_notification(id, token)`, `account_notification_preferences(token)`, `account_update_notification_preferences(token, topics=..., sound_enabled=...)` |
 | Notebook exports | `account_notebooks(token)`, `account_notebook(uuid, token)`, `account_notebook_chapter_pgn(uuid, chapter_id, token)`, `account_notebook_file(uuid, token, password=None)` |
+| Play the Gym's bots | `account_gym(token)`, `account_gym_games(token, page=1, page_size=20)`, `account_gym_new_game(bot_key, token, color="white", time="unlimited")`, `account_gym_game(id, token)`, `account_gym_move(id, uci, ply, token)`, `account_gym_bot_move(id, ply, token)`, `account_gym_take_back(id, token)`, `account_gym_resign(id, token)`, `account_gym_clock(id, token)`, `account_gym_abort(id, token)`, `account_gym_delete_game(id, token)`, `account_gym_game_pgn(id, token)` |
 | Notebook, Remote, Cast and other application APIs | `ApplicationClient.request(path, method=..., body=..., token=...)`, `download(path, token=...)` for files |
 | Scanner upload | `ApplicationClient.scan_position(jpeg_bytes, token)` |
 
@@ -146,6 +147,36 @@ if gif.ok:
         handle.write(gif.content)
 else:
     print(gif.status, gif.error)
+```
+
+### Play the Gym's bots
+
+Any account can play the Gym's bots; the moves are computed on the server.
+Personal tokens need `gym:read` to read games and `gym:play` to start and play
+them. Send the `ply` from the latest game state with each move: a stale ply
+returns 409 and plays nothing, so a repeated request is safe. The bot engine
+plays one move at a time. While it is busy, `account_gym_bot_move` returns 429
+with `capacity_exhausted`: wait `retry_after` seconds and ask again with the
+same ply. Each account has an hour of engine time; once it is spent the answer
+is 429 `engine_budget` with `retry_after` set to the seconds until the hour
+ends. An account starts at most 30 games an hour.
+
+```python
+import os
+import time
+from classicchess_api import ApplicationClient
+
+token = os.environ["CLASSICCHESS_API_TOKEN"]  # a token with gym:read and gym:play
+api = ApplicationClient()
+created = api.account_gym_new_game("morphy", token, color="white", time="5+0")
+if not created.ok:
+    raise SystemExit(f"{created.status} {created.data}")
+game = api.account_gym_move(created.data["id"], "e2e4", created.data["ply"], token).data
+reply = api.account_gym_bot_move(game["id"], game["ply"], token)
+while reply.status == 429 and reply.data["error"]["code"] == "capacity_exhausted":
+    time.sleep(int(reply.retry_after or 1))
+    reply = api.account_gym_bot_move(game["id"], game["ply"], token)
+print(reply.status, reply.data.get("sans"), reply.data.get("clock"))
 ```
 
 The CLI reads `CLASSICCHESS_API_TOKEN` for account commands. Existing installations

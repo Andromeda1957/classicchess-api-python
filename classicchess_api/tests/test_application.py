@@ -271,6 +271,73 @@ class SiteGapRequestTests(TestCase):
             self.assertEqual(request.full_url, base + '/file/')
             self.assertEqual(json.loads(request.data), {'password': 'secret'})
 
+    def test_gym_requests_use_exact_methods_paths_and_bodies(self):
+        api = ApplicationClient()
+        game = '/api/v1/account/gym/games/7/'
+        self.assert_request(lambda: api.account_gym('t'), 'GET', '/api/v1/account/gym/?page_size=20', None)
+        self.assert_request(lambda: api.account_gym_games('t', page=2, page_size=10),
+                            'GET', '/api/v1/account/gym/games/?page=2&page_size=10', None)
+        self.assert_request(lambda: api.account_gym_games('t', player='others'),
+                            'GET', '/api/v1/account/gym/games/?page=1&page_size=20&player=others', None)
+        self.assert_request(lambda: api.account_gym_new_game('morphy', 't'),
+                            'POST', '/api/v1/account/gym/bots/morphy/games/', {'color': 'white', 'time': 'unlimited'})
+        self.assert_request(lambda: api.account_gym_new_game('morphy', 't', color='random', time='3+0'),
+                            'POST', '/api/v1/account/gym/bots/morphy/games/', {'color': 'random', 'time': '3+0'})
+        self.assert_request(lambda: api.account_gym_new_game('morphy', 't', time='custom', minutes=2, increment=1),
+                            'POST', '/api/v1/account/gym/bots/morphy/games/',
+                            {'color': 'white', 'time': 'custom', 'minutes': 2, 'increment': 1})
+        self.assert_request(lambda: api.account_gym_game(7, 't'), 'GET', game, None)
+        self.assert_request(lambda: api.account_gym_delete_game(7, 't'), 'DELETE', game, None)
+        self.assert_request(lambda: api.account_gym_move(7, 'e7e8q', 0, 't'),
+                            'POST', game + 'move/', {'move': 'e7e8q', 'ply': 0})
+        self.assert_request(lambda: api.account_gym_bot_move(7, 1, 't'), 'POST', game + 'bot-move/', {'ply': 1})
+        for call, action in ((api.account_gym_resign, 'resign/'), (api.account_gym_take_back, 'takeback/'),
+                             (api.account_gym_clock, 'clock/'), (api.account_gym_abort, 'abort/')):
+            with self.subTest(action=action):
+                self.assert_request(lambda call=call: call(7, 't'), 'POST', game + action, None)
+
+    def test_gym_pgn_downloads_and_a_busy_engine_keeps_its_retry_after(self):
+        api = ApplicationClient()
+        with patch('classicchess_api.application.build_opener') as opener:
+            opener.return_value.open.return_value = file_reply(b'1. e4 *', 'application/x-chess-pgn', 'gym.pgn')
+            pgn = api.account_gym_game_pgn(7, 't')
+            request = opener.return_value.open.call_args.args[0]
+            self.assertEqual(request.full_url, 'https://classicchess.com/api/v1/account/gym/games/7/pgn/')
+            self.assertEqual((pgn.content, pgn.filename), (b'1. e4 *', 'gym.pgn'))
+            reply = Reply(json.dumps({'error': {'code': 'capacity_exhausted', 'message': 'Busy.'}}).encode())
+            reply.status = 429
+            reply.headers = {'Retry-After': '1'}
+            opener.return_value.open.return_value = reply
+            busy = api.account_gym_bot_move(7, 1, 't')
+        # No automatic retry: the caller decides, with the server's hint.
+        self.assertEqual(opener.return_value.open.call_count, 2)
+        self.assertEqual((busy.status, busy.retry_after, busy.data['error']['code']), (429, '1', 'capacity_exhausted'))
+
+    def test_gym_helpers_reject_invalid_arguments_before_sending(self):
+        api = ApplicationClient()
+        calls = [
+            lambda: api.account_gym('t', page_size=101),
+            lambda: api.account_gym_games('t', player='everyone'),
+            lambda: api.account_gym_games('t', page=0),
+            lambda: api.account_gym_new_game('../me', 't'),
+            lambda: api.account_gym_new_game('morphy', 't', color='green'),
+            lambda: api.account_gym_new_game('morphy', 't', time=''),
+            lambda: api.account_gym_new_game('morphy', 't', time='custom', minutes=0, increment=0),
+            lambda: api.account_gym_new_game('morphy', 't', time='custom', minutes=True, increment=0),
+            lambda: api.account_gym_new_game('morphy', 't', time='3+0', minutes=3),
+            lambda: api.account_gym_game(0, 't'),
+            lambda: api.account_gym_game('7', 't'),
+            lambda: api.account_gym_move(7, 'e2-e4', 0, 't'),
+            lambda: api.account_gym_move(7, 'e2e4', -1, 't'),
+            lambda: api.account_gym_bot_move(7, True, 't'),
+            lambda: api.account_gym_abort(-3, 't'),
+        ]
+        with patch('classicchess_api.application.build_opener') as opener:
+            for call in calls:
+                with self.subTest(call=call), self.assertRaises(ApiError):
+                    call()
+        opener.assert_not_called()
+
     def test_bearers_reach_only_gif_routes_among_public_paths(self):
         api = ApplicationClient()
         paths = ('/api/v1/public/games/g1/', '/api/v1/public/games/g1/pgn/',

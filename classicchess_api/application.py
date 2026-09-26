@@ -66,6 +66,37 @@ def _page_query(page, page_size):
     return f'page={page}&page_size={page_size}'
 
 
+UCI_MOVE = re.compile(r'[a-h][1-8][a-h][1-8][qrbn]?')
+GYM_COLORS = ('white', 'black', 'random')
+GYM_PLAYERS = ('me', 'others')
+
+
+def _gym_game(game_id):
+    return '/api/v1/account/gym/games/' + str(_positive_id(game_id, 'game ID')) + '/'
+
+
+def _ply(value):
+    if type(value) is not int or value < 0:
+        raise ApiError('Use the ply from the game state: a whole number from 0.', code='invalid_request')
+    return value
+
+
+def _gym_new_game_body(color, time, minutes, increment):
+    if color not in GYM_COLORS:
+        raise ApiError('color must be white, black or random.', code='invalid_request')
+    if not isinstance(time, str) or not time:
+        raise ApiError('time must be unlimited, a preset such as 3+0, or custom.', code='invalid_request')
+    body = {'color': color, 'time': time}
+    if time == 'custom':
+        if type(minutes) is not int or minutes < 1 or type(increment) is not int or increment < 0:
+            raise ApiError('A custom time needs whole minutes from 1 and increment seconds from 0.',
+                           code='invalid_request')
+        body.update(minutes=minutes, increment=increment)
+    elif minutes is not None or increment is not None:
+        raise ApiError('minutes and increment apply only to time="custom".', code='invalid_request')
+    return body
+
+
 class NoRedirect(HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         return None
@@ -324,6 +355,66 @@ class ApplicationClient:
             raise ApiError('Use a non-empty password.', code='invalid_request')
         return self.download(path, method='POST', body=json.dumps({'password': password}),
                              token=token, accept=accept)
+
+    # The Gym: play the site's bots. Personal tokens need gym:read to read and
+    # gym:play for the rest; device sessions pass both.
+    def account_gym(self, token: str, *, page_size=20) -> ApplicationResponse:
+        """The bots, the time controls a new game may use and the newest page of your games."""
+        _page_query(1, page_size)
+        return self.request(f'/api/v1/account/gym/?page_size={page_size}', token=token)
+
+    def account_gym_games(self, token: str, *, player='me', page=1, page_size=20) -> ApplicationResponse:
+        """Your games, newest first; player="others" is for the Gym's review accounts only."""
+        if player not in GYM_PLAYERS:
+            raise ApiError('player must be me or others.', code='invalid_request')
+        query = _page_query(page, page_size) + ('&player=others' if player == 'others' else '')
+        return self.request('/api/v1/account/gym/games/?' + query, token=token)
+
+    def account_gym_new_game(self, bot_key: str, token: str, *, color='white', time='unlimited',
+                             minutes=None, increment=None) -> ApplicationResponse:
+        """Start a game (201). time is "unlimited", a preset such as "3+0", or "custom" with minutes and increment."""
+        body = _gym_new_game_body(color, time, minutes, increment)
+        path = '/api/v1/account/gym/bots/' + public_slug_segment(bot_key, 'bot key') + '/games/'
+        return self.request(path, method='POST', body=json.dumps(body), token=token)
+
+    def account_gym_game(self, game_id: int, token: str) -> ApplicationResponse:
+        return self.request(_gym_game(game_id), token=token)
+
+    def account_gym_game_pgn(self, game_id: int, token: str) -> ApplicationDownload:
+        return self.download(_gym_game(game_id) + 'pgn/', token=token, accept='application/x-chess-pgn')
+
+    def account_gym_move(self, game_id: int, move: str, ply: int, token: str) -> ApplicationResponse:
+        """Play a UCI move such as "e2e4" at the ply you have seen; a stale ply is 409 and plays nothing."""
+        if not isinstance(move, str) or not UCI_MOVE.fullmatch(move):
+            raise ApiError('Use a UCI move such as e2e4 or e7e8q.', code='invalid_request')
+        return self._gym_post(game_id, 'move/', token, {'move': move, 'ply': _ply(ply)})
+
+    def account_gym_bot_move(self, game_id: int, ply: int, token: str) -> ApplicationResponse:
+        """Ask for the bot's move. A 429 capacity_exhausted means the engine is busy: wait
+        ``retry_after`` seconds and ask again with the same ply. A 429 engine_budget means this
+        account's hour of engine time is spent until ``retry_after`` seconds from now."""
+        return self._gym_post(game_id, 'bot-move/', token, {'ply': _ply(ply)})
+
+    def account_gym_resign(self, game_id: int, token: str) -> ApplicationResponse:
+        return self._gym_post(game_id, 'resign/', token)
+
+    def account_gym_take_back(self, game_id: int, token: str) -> ApplicationResponse:
+        return self._gym_post(game_id, 'takeback/', token)
+
+    def account_gym_clock(self, game_id: int, token: str) -> ApplicationResponse:
+        """Settle the clock when one you show reaches zero; the server decides."""
+        return self._gym_post(game_id, 'clock/', token)
+
+    def account_gym_abort(self, game_id: int, token: str) -> ApplicationResponse:
+        """Abort (and delete) a game before your first move."""
+        return self._gym_post(game_id, 'abort/', token)
+
+    def account_gym_delete_game(self, game_id: int, token: str) -> ApplicationResponse:
+        return self.request(_gym_game(game_id), method='DELETE', token=token)
+
+    def _gym_post(self, game_id, action, token, body=None):
+        return self.request(_gym_game(game_id) + action, method='POST',
+                            body=json.dumps(body) if body is not None else None, token=token)
 
     def scan_position(self, image: bytes, token: str) -> ApplicationResponse:
         if not isinstance(image, bytes) or not 1 <= len(image) <= 850_000:

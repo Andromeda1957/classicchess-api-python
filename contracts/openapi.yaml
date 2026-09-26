@@ -1621,6 +1621,335 @@ paths:
           description: Personal API token is missing the required scope.
         "404":
           description: Notebook or chapter not found, or not exportable by this account.
+  /api/v1/account/gym/:
+    get:
+      summary: The Gym's bots, time controls and the account's first page of games
+      description: >-
+        Every active account may play. Bot moves are computed on the server; the bot's weights never
+        leave it. can_review_all is true only for the Gym's review accounts, which may also list and
+        read other players' games (never change them).
+      security:
+        - AccountApiToken: []
+        - MobileSessionToken: []
+      x-required-scopes: [gym:read]
+      parameters:
+        - { name: page_size, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+      responses:
+        "200":
+          description: Bots, time controls and the newest games.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GymHome' }
+        "401":
+          description: Missing or invalid bearer token. Browser cookie sessions are not accepted.
+        "403":
+          description: Personal API token is missing the required scope.
+  /api/v1/account/gym/games/:
+    get:
+      summary: One page of Gym games, newest first
+      description: >-
+        player=me (the default) lists the account's own games. player=others lists every other
+        player's non-empty games and is available only to the review accounts; other accounts get 404.
+      security:
+        - AccountApiToken: []
+        - MobileSessionToken: []
+      x-required-scopes: [gym:read]
+      parameters:
+        - { name: player, in: query, schema: { type: string, enum: [me, others], default: me } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: page_size, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+      responses:
+        "200":
+          description: One page of game summaries.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GymGamePage' }
+        "400":
+          description: Invalid player, page or page_size.
+        "401":
+          description: Missing or invalid bearer token. Browser cookie sessions are not accepted.
+        "403":
+          description: Personal API token is missing the required scope.
+        "404":
+          description: player=others from an account that is not a review account.
+  /api/v1/account/gym/bots/{bot_key}/games/:
+    post:
+      summary: Start a Gym game against a bot
+      description: >-
+        One account may start 30 games an hour, counted together with the website. When the human
+        plays Black the response has bot_to_move true; ask for the bot's move next.
+      security:
+        - AccountApiToken: []
+        - MobileSessionToken: []
+      x-required-scopes: [gym:play]
+      parameters:
+        - { name: bot_key, in: path, required: true, schema: { type: string, example: morphy } }
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GymNewGame' }
+      responses:
+        "201":
+          description: The new game.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GymGameState' }
+        "400":
+          description: invalid_color, invalid_time_control or invalid_json.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+        "401":
+          description: Missing or invalid bearer token. Browser cookie sessions are not accepted.
+        "403":
+          description: Personal API token is missing gym:play.
+        "404":
+          description: Unknown bot.
+        "429":
+          description: rate_limited; the hourly allowance of new games is spent. Retry-After gives the seconds to wait.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+  /api/v1/account/gym/games/{game_id}/:
+    get:
+      summary: One Gym game
+      description: The account's own game, or any game for a review account (is_player is then false).
+      security:
+        - AccountApiToken: []
+        - MobileSessionToken: []
+      x-required-scopes: [gym:read]
+      parameters:
+        - { $ref: '#/components/parameters/GymGameId' }
+      responses:
+        "200":
+          description: The game, with its clock settled.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GymGameState' }
+        "401":
+          description: Missing or invalid bearer token. Browser cookie sessions are not accepted.
+        "403":
+          description: Personal API token is missing the required scope.
+        "404":
+          description: No such game, or another player's game.
+    delete:
+      summary: Delete one of the account's Gym games
+      security:
+        - AccountApiToken: []
+        - MobileSessionToken: []
+      x-required-scopes: [gym:play]
+      parameters:
+        - { $ref: '#/components/parameters/GymGameId' }
+      responses:
+        "200":
+          description: The game was deleted.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GymDeleted' }
+        "401":
+          description: Missing or invalid bearer token. Browser cookie sessions are not accepted.
+        "403":
+          description: Personal API token is missing gym:play.
+        "404":
+          description: No such game, or not the account's own game.
+  /api/v1/account/gym/games/{game_id}/pgn/:
+    get:
+      summary: Download a Gym game as PGN
+      security:
+        - AccountApiToken: []
+        - MobileSessionToken: []
+      x-required-scopes: [gym:read]
+      parameters:
+        - { $ref: '#/components/parameters/GymGameId' }
+      responses:
+        "200":
+          description: PGN attachment with the bot, result, opening and time control.
+          content:
+            application/x-chess-pgn:
+              schema: { type: string }
+        "401":
+          description: Missing or invalid bearer token. Browser cookie sessions are not accepted.
+        "403":
+          description: Personal API token is missing the required scope.
+        "404":
+          description: No such game, or another player's game.
+  /api/v1/account/gym/games/{game_id}/move/:
+    post:
+      summary: Play the human's move
+      description: >-
+        ply is the number of moves the client has seen; a stale ply is refused with 409 so a
+        repeated request never plays twice.
+      security:
+        - AccountApiToken: []
+        - MobileSessionToken: []
+      x-required-scopes: [gym:play]
+      parameters:
+        - { $ref: '#/components/parameters/GymGameId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [move, ply]
+              properties:
+                move: { type: string, description: 'UCI move, for example e2e4 or e7e8q.' }
+                ply: { type: integer, minimum: 0 }
+      responses:
+        "200":
+          description: The game after the move.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GymGameState' }
+        "400":
+          description: Invalid or illegal move.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+        "401":
+          description: Missing or invalid bearer token. Browser cookie sessions are not accepted.
+        "403":
+          description: Personal API token is missing gym:play.
+        "404":
+          description: No such game, or not the account's own game.
+        "409":
+          description: Stale ply, not the human's turn, or the game is over.
+  /api/v1/account/gym/games/{game_id}/bot-move/:
+    post:
+      summary: Ask the bot for its move
+      description: >-
+        The engine computes one move at a time and serves waiting accounts in turn. While it is busy
+        the answer is 429 capacity_exhausted with Retry-After 1: ask again with the same ply. Each
+        account also has an hourly budget of engine time; once it is spent the answer is 429
+        engine_budget with Retry-After until the hour ends. Opening-book moves cost nothing.
+      security:
+        - AccountApiToken: []
+        - MobileSessionToken: []
+      x-required-scopes: [gym:play]
+      parameters:
+        - { $ref: '#/components/parameters/GymGameId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ply]
+              properties:
+                ply: { type: integer, minimum: 0 }
+      responses:
+        "200":
+          description: The game after the bot's move.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GymGameState' }
+        "401":
+          description: Missing or invalid bearer token. Browser cookie sessions are not accepted.
+        "403":
+          description: Personal API token is missing gym:play.
+        "404":
+          description: No such game, or not the account's own game.
+        "409":
+          description: Stale ply, not the bot's turn, or the game is over.
+        "429":
+          description: capacity_exhausted (retry after 1 second) or engine_budget (retry after Retry-After).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+        "503":
+          description: The bot is unavailable.
+  /api/v1/account/gym/games/{game_id}/resign/:
+    post:
+      summary: Resign the game
+      security:
+        - AccountApiToken: []
+        - MobileSessionToken: []
+      x-required-scopes: [gym:play]
+      parameters:
+        - { $ref: '#/components/parameters/GymGameId' }
+      responses:
+        "200":
+          description: The finished game.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GymGameState' }
+        "401":
+          description: Missing or invalid bearer token. Browser cookie sessions are not accepted.
+        "403":
+          description: Personal API token is missing gym:play.
+        "404":
+          description: No such game, or not the account's own game.
+        "409":
+          description: The game is already over.
+  /api/v1/account/gym/games/{game_id}/takeback/:
+    post:
+      summary: Take back the human's last move and the bot's reply
+      security:
+        - AccountApiToken: []
+        - MobileSessionToken: []
+      x-required-scopes: [gym:play]
+      parameters:
+        - { $ref: '#/components/parameters/GymGameId' }
+      responses:
+        "200":
+          description: The game after the take-back.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GymGameState' }
+        "401":
+          description: Missing or invalid bearer token. Browser cookie sessions are not accepted.
+        "403":
+          description: Personal API token is missing gym:play.
+        "404":
+          description: No such game, or not the account's own game.
+        "409":
+          description: Nothing to take back, or the game is over.
+  /api/v1/account/gym/games/{game_id}/clock/:
+    post:
+      summary: Settle the clock
+      description: Call when a clock the client shows reaches zero; the server decides whether the game is lost on time.
+      security:
+        - AccountApiToken: []
+        - MobileSessionToken: []
+      x-required-scopes: [gym:play]
+      parameters:
+        - { $ref: '#/components/parameters/GymGameId' }
+      responses:
+        "200":
+          description: The game with its clock settled.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GymGameState' }
+        "401":
+          description: Missing or invalid bearer token. Browser cookie sessions are not accepted.
+        "403":
+          description: Personal API token is missing gym:play.
+        "404":
+          description: No such game, or not the account's own game.
+  /api/v1/account/gym/games/{game_id}/abort/:
+    post:
+      summary: Abort a game before the human's first move
+      description: An aborted game is deleted. can_abort in the game state says whether abort is still possible.
+      security:
+        - AccountApiToken: []
+        - MobileSessionToken: []
+      x-required-scopes: [gym:play]
+      parameters:
+        - { $ref: '#/components/parameters/GymGameId' }
+      responses:
+        "200":
+          description: The game was aborted and deleted.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GymAborted' }
+        "401":
+          description: Missing or invalid bearer token. Browser cookie sessions are not accepted.
+        "403":
+          description: Personal API token is missing gym:play.
+        "404":
+          description: No such game, or not the account's own game.
+        "409":
+          description: cannot_abort; the human has already moved.
   /api/v1/account/starred/players/:
     get:
       summary: List the account's starred players
@@ -1834,6 +2163,11 @@ components:
       required: true
       description: Exact slug from the curated-event catalog.
       schema: { type: string, example: wcc-1972-fischer-spassky }
+    GymGameId:
+      name: game_id
+      in: path
+      required: true
+      schema: { type: integer }
   responses:
     InvalidQuery:
       description: Query exceeds its bounds or requests an unsupported format.
@@ -2800,6 +3134,132 @@ components:
               sort_order: { type: integer }
               updated_at: { type: string }
               urls: { $ref: '#/components/schemas/ResourceLinks' }
+    GymBot:
+      type: object
+      required: [key, name, about]
+      properties:
+        key: { type: string }
+        name: { type: string }
+        about: { type: string }
+    GymTimeControls:
+      type: object
+      required: [presets, max_minutes, max_increment_seconds]
+      properties:
+        presets:
+          type: array
+          description: 'Preset values for a new game''s time field, as minutes+increment, for example 3+0.'
+          items: { type: string }
+        max_minutes: { type: integer }
+        max_increment_seconds: { type: integer }
+    GymNewGame:
+      type: object
+      properties:
+        color: { type: string, enum: [white, black, random], default: white }
+        time:
+          type: string
+          default: unlimited
+          description: unlimited, one of time_controls.presets, or custom with minutes and increment.
+        minutes: { type: integer, minimum: 1, description: 'Minutes per side for time=custom.' }
+        increment: { type: integer, minimum: 0, description: 'Seconds added per move for time=custom.' }
+    GymClock:
+      type: object
+      required: [initial_ms, increment_ms, white_ms, black_ms, running]
+      properties:
+        initial_ms: { type: integer }
+        increment_ms: { type: integer }
+        white_ms: { type: integer }
+        black_ms: { type: integer }
+        running: { type: [string, 'null'], description: 'white, black, or null when no clock is running.' }
+    GymGameSummary:
+      type: object
+      required: [id, bot, bot_name, player, is_player, human_color, plies, result, finished, termination,
+                 termination_label, opening, time_control, created_at, urls]
+      properties:
+        id: { type: integer }
+        bot: { type: string }
+        bot_name: { type: string }
+        player: { type: string, description: Username of the account that played the game. }
+        is_player: { type: boolean, description: 'False when a review account reads another player''s game.' }
+        human_color: { type: string, enum: [white, black] }
+        plies: { type: integer }
+        result: { type: string, description: '1-0, 0-1, 1/2-1/2 or * while in play.' }
+        finished: { type: boolean }
+        termination: { type: string }
+        termination_label: { type: string }
+        opening: { type: string }
+        time_control: { type: string, description: 'minutes+increment, or empty for an unlimited game.' }
+        created_at: { type: string, format: date-time }
+        urls: { $ref: '#/components/schemas/ResourceLinks' }
+    GymGamePage:
+      type: object
+      required: [count, page, page_size, page_count, results]
+      properties:
+        count: { type: integer }
+        page: { type: integer }
+        page_size: { type: integer }
+        page_count: { type: integer }
+        results:
+          type: array
+          items: { $ref: '#/components/schemas/GymGameSummary' }
+    GymHome:
+      type: object
+      required: [bots, time_controls, can_review_all, games]
+      properties:
+        bots:
+          type: array
+          items: { $ref: '#/components/schemas/GymBot' }
+        time_controls: { $ref: '#/components/schemas/GymTimeControls' }
+        can_review_all: { type: boolean }
+        games: { $ref: '#/components/schemas/GymGamePage' }
+    GymGameState:
+      type: object
+      required: [id, bot, bot_name, player, is_player, moves, sans, fen, ply, human_color, result, finished,
+                 termination, termination_label, takebacks, can_abort, clock, bot_to_move, opening,
+                 time_control, created_at, urls]
+      properties:
+        id: { type: integer }
+        bot: { type: string }
+        bot_name: { type: string }
+        player: { type: string }
+        is_player: { type: boolean }
+        moves:
+          type: array
+          items: { type: string }
+          description: UCI moves from the starting position.
+        sans:
+          type: array
+          items: { type: string }
+        fen: { type: string }
+        ply: { type: integer }
+        human_color: { type: string, enum: [white, black] }
+        result: { type: string }
+        finished: { type: boolean }
+        termination: { type: string }
+        termination_label: { type: string }
+        takebacks: { type: integer }
+        can_abort: { type: boolean }
+        clock:
+          anyOf:
+            - { $ref: '#/components/schemas/GymClock' }
+            - { type: 'null' }
+        bot_to_move: { type: boolean }
+        opening: { type: string }
+        time_control: { type: string }
+        created_at: { type: string, format: date-time }
+        urls: { $ref: '#/components/schemas/ResourceLinks' }
+    GymDeleted:
+      type: object
+      required: [ok, id]
+      properties:
+        ok: { type: boolean }
+        id: { type: integer }
+    GymAborted:
+      type: object
+      required: [ok, id, aborted]
+      properties:
+        ok: { type: boolean }
+        id: { type: integer }
+        aborted: { type: boolean }
   securitySchemes:
     AccountApiToken:
       type: http
