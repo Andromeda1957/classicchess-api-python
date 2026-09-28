@@ -27,6 +27,9 @@ from classicchess_api.response import read_bounded
 
 DEFAULT_BASE_URL = "https://classicchess.com"
 USER_AGENT = "classicchess-python-client/0.1.0"
+LICHESS_USERNAME = re.compile(r"^[A-Za-z0-9_-]{2,30}$")
+LICHESS_EXPLORER_COLORS = ("both", "white", "black")
+LICHESS_EXPLORER_RESULTS = ("all", "win", "loss", "draw")
 
 
 def http_api_error(exc, url, body):
@@ -506,6 +509,35 @@ class ClassicChessClient:
 
     def explorer_sources(self) -> dict[str, Any]:
         return self.get_json("/api/v1/opening-explorer/sources/")
+
+    def lichess_explorer(
+        self,
+        *,
+        fen: str | None = None,
+        player: str | None = None,
+        color: str = "both",
+        result: str = "all",
+    ) -> dict[str, Any]:
+        """Explore a position in the Lichess database through Classic Chess.
+
+        The site relays the request with its own Lichess credential, so no
+        Lichess token is needed. Without ``player`` the answer covers the whole
+        Lichess database; with a Lichess username it covers that player's games.
+        """
+        player = (player or "").strip()
+        if fen is not None and len(fen) > 100:
+            raise ApiError("Use a FEN of at most 100 characters.", code="invalid_query")
+        if player and not LICHESS_USERNAME.fullmatch(player):
+            raise ApiError("Use a valid Lichess username.", code="invalid_query")
+        if color not in LICHESS_EXPLORER_COLORS or result not in LICHESS_EXPLORER_RESULTS:
+            raise ApiError("color must be both, white or black; result must be all, win, loss or draw.",
+                           code="invalid_query")
+        if not player and result != "all":
+            raise ApiError("A Lichess username is needed for result filters.", code="invalid_query")
+        params: dict[str, Any] = {"fen": fen or None}
+        if player:
+            params.update({"player": player, "color": color, "result": result})
+        return self.get_json("/api/v1/opening-explorer/lichess/", params)
 
     def annotated_books(self) -> dict[str, Any]:
         return self.get_json("/api/v1/annotated/books/")

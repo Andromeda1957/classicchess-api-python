@@ -84,17 +84,20 @@ paths:
   /api/v1/stats/:
     get:
       summary: Player statistics
+      description: Send either q (a free-text stats question) or player. When q is present, player and opponent are ignored; otherwise player is required, and head_to_head mode also requires opponent.
       parameters:
+        - name: q
+          in: query
+          schema: { type: string, maxLength: 120, description: Free-text stats question such as "Tal vs Petrosian". Takes precedence over player and opponent. }
         - name: player
           in: query
-          required: true
-          schema: { type: string, maxLength: 80 }
+          schema: { type: string, maxLength: 80, description: Required when q is absent. }
         - name: mode
           in: query
           schema: { type: string, enum: [summary, head_to_head], default: summary }
         - name: opponent
           in: query
-          schema: { type: string }
+          schema: { type: string, maxLength: 80 }
       responses:
         "200":
           description: Player summary or head-to-head record.
@@ -852,6 +855,48 @@ paths:
       responses:
         "200":
           description: Available opening explorer builds.
+  /api/v1/opening-explorer/lichess/:
+    get:
+      operationId: lichessOpeningExplorer
+      tags: [Analysis]
+      summary: Explore a position in the Lichess opening database through this server
+      description: >-
+        Relays the Lichess opening explorer through this server's credentialed adapter, so
+        clients never need a Lichess token. Without player the response covers the aggregate
+        Lichess database; with a Lichess username it covers that player's games from the
+        chosen color. Each client may make 60 requests per minute, and the server shares a
+        global budget with every client.
+      parameters:
+        - name: fen
+          in: query
+          schema: { type: string, maxLength: 100 }
+          description: Position to explore; omitted means the starting position.
+        - name: player
+          in: query
+          schema: { type: string, pattern: '^[A-Za-z0-9_-]{2,30}$' }
+          description: Lichess username. Blank means the aggregate Lichess database.
+        - name: color
+          in: query
+          schema: { type: string, enum: [both, white, black], default: both }
+          description: The player's color; used only with player. both combines the player's games from each side.
+        - name: result
+          in: query
+          schema: { type: string, enum: [all, win, loss, draw], default: all }
+          description: The player's result; any value other than all requires player.
+      responses:
+        "200":
+          description: >-
+            count, moves (uci, san, white, draws, black, count), sample games with Lichess ids,
+            player names, winner and month, the named opening, partial, and sample_label.
+        "400":
+          description: The FEN, username, color or result is invalid, or a result filter was sent without player.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+        "429":
+          description: The client or the shared Lichess budget is exhausted; honor Retry-After.
+        "503":
+          description: The server has no Lichess credential configured, or Lichess is unavailable.
   /api/v1/tablebase/:
     get:
       operationId: probeTablebase
@@ -1583,7 +1628,7 @@ paths:
               required: [password]
               additionalProperties: false
               properties:
-                password: { type: string, minLength: 1 }
+                password: { type: string, minLength: 12, description: At least 12 characters and at most 1024 UTF-8 bytes. }
       responses:
         "200":
           description: Encrypted Classic Chess Notebook file.

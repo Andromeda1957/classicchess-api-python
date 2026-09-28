@@ -84,6 +84,11 @@ class CapabilityParityTests(TestCase):
             (lambda: api.site_search('tal', kind='games', page=2), '/api/v1/public/search/?q=tal&kind=games&page=2'),
             (lambda: api.tablebase('8/8/8/8/8/2k5/2P5/2K5 w - - 0 1'),
              '/api/v1/tablebase/?fen=8%2F8%2F8%2F8%2F8%2F2k5%2F2P5%2F2K5+w+-+-+0+1'),
+            (lambda: api.lichess_explorer(), '/api/v1/opening-explorer/lichess/'),
+            (lambda: api.lichess_explorer(fen='8/8/8/8/8/2k5/2P5/2K5 w - - 0 1', player='DrNykterstein',
+                                          color='white', result='win'),
+             '/api/v1/opening-explorer/lichess/?fen=8%2F8%2F8%2F8%2F8%2F2k5%2F2P5%2F2K5+w+-+-+0+1'
+             '&player=DrNykterstein&color=white&result=win'),
         ]
         for call, path in cases:
             with self.subTest(path=path), patch.object(
@@ -105,6 +110,9 @@ class CapabilityParityTests(TestCase):
             lambda: api.gallery_photo('x?y'), lambda: api.site_search(''), lambda: api.site_search('x' * 121),
             lambda: api.site_search('tal', kind='users'), lambda: api.site_search('tal', page=2),
             lambda: api.tablebase(''), lambda: api.tablebase('k' * 201),
+            lambda: api.lichess_explorer(player='a'), lambda: api.lichess_explorer(player='x/../me'),
+            lambda: api.lichess_explorer(result='win'), lambda: api.lichess_explorer(player='abc', color='red'),
+            lambda: api.lichess_explorer(fen='k' * 101),
             lambda: api.public_imported_game('..', 'g1'), lambda: api.public_imported_game('a/b', 'g1'),
             lambda: api.public_imported_pgn('ann', '../me'),
         ]

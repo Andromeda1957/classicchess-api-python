@@ -392,7 +392,8 @@ class ApplicationClient:
     def account_gym_bot_move(self, game_id: int, ply: int, token: str) -> ApplicationResponse:
         """Ask for the bot's move. A 429 capacity_exhausted means the engine is busy: wait
         ``retry_after`` seconds and ask again with the same ply. A 429 engine_budget means this
-        account's hour of engine time is spent until ``retry_after`` seconds from now."""
+        account has used its 30 minutes of engine time for the current hour; ask again after
+        ``retry_after`` seconds."""
         return self._gym_post(game_id, 'bot-move/', token, {'ply': _ply(ply)})
 
     def account_gym_resign(self, game_id: int, token: str) -> ApplicationResponse:
