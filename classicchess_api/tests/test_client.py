@@ -44,6 +44,34 @@ class PlayerDiscoveryClientTests(unittest.TestCase):
         self.assertEqual(caught.exception.retry_after, '900')
 
 
+
+class PublicGameSearchModeTests(unittest.TestCase):
+    def test_search_mode_reaches_list_iterate_and_export_requests(self):
+        client = ClassicChessClient()
+        with patch.object(client, 'fetch_json', return_value={'results': [], 'page_count': 1}) as fetch:
+            client.public_games('brons', archive_player='miguel-najdorf', search_mode='players')
+        self.assertIn('search_mode=players', fetch.call_args.args[0])
+        with patch.object(client, 'fetch_json', return_value={'results': [], 'next': None}) as fetch:
+            list(client.iterate_public_games('e55', search_mode='openings'))
+        self.assertIn('search_mode=openings', fetch.call_args.args[0])
+        with patch.object(client, 'get_text', return_value='') as get_text:
+            client.export_public_games(query='brons', search_mode='players')
+        self.assertEqual(get_text.call_args.args[1]['search_mode'], 'players')
+
+    def test_omitted_search_mode_keeps_the_server_default(self):
+        client = ClassicChessClient()
+        with patch.object(client, 'fetch_json', return_value={'results': [], 'page_count': 1}) as fetch:
+            client.public_games('brons')
+        self.assertNotIn('search_mode', fetch.call_args.args[0])
+
+    def test_unknown_search_mode_is_rejected_before_io(self):
+        client = ClassicChessClient()
+        with patch.object(client, 'fetch_json') as fetch:
+            with self.assertRaises(ApiError) as caught:
+                client.public_games('brons', search_mode='events')
+            fetch.assert_not_called()
+        self.assertEqual(caught.exception.code, 'invalid_query')
+
 class CredentialOriginPolicyTests(unittest.TestCase):
     def test_relative_and_same_origin_https_urls_are_allowed(self) -> None:
         base = "https://classicchess.com/api/"

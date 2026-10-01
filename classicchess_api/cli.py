@@ -135,6 +135,7 @@ def collect_public_game_pages(args: argparse.Namespace, query: str) -> dict[str,
         query,
         archive_player=args.archive_player,
         archive_event=args.archive_event,
+        search_mode=args.search_mode,
         since=args.since,
         until=args.until,
         sort=args.sort,
@@ -216,6 +217,7 @@ def command_public_export(args: argparse.Namespace) -> int:
         query="" if args.tokens else build_public_game_query(args),
         archive_player=args.archive_player,
         archive_event=args.archive_event,
+        search_mode=args.search_mode,
         since=args.since,
         until=args.until,
         tokens=args.tokens,
@@ -323,6 +325,12 @@ def add_games_args(parser: argparse.ArgumentParser, *, public: bool = False) -> 
         parser.add_argument(
             "--archive-event",
             help="Restrict to one public event archive by event slug.",
+        )
+        parser.add_argument(
+            "--search-mode",
+            choices=("all", "players", "openings"),
+            help="Fields the query searches: players (players, event, site, date), "
+            "openings (opening name, ECO), or all. Default: all.",
         )
         parser.add_argument("--since", type=int, help="Include games from this year or later.")
         parser.add_argument("--until", type=int, help="Include games from this year or earlier.")
@@ -514,11 +522,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Pull Classic Chess API data from an explicit source.",
     )
-    parser.add_argument(
-        "--base-url",
-        default=DEFAULT_BASE_URL,
-        help=f"API base URL. Default: {DEFAULT_BASE_URL}",
-    )
+    parser.set_defaults(base_url=DEFAULT_BASE_URL)
     parser.add_argument(
         "--api-token",
         help="Account API token. Defaults to CLASSICCHESS_API_TOKEN when omitted.",

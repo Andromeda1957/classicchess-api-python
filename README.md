@@ -100,8 +100,10 @@ Missing biographies are `None`, and notable lists can be empty.
 | Notebook, Remote, Cast and other application APIs | `ApplicationClient.request(path, method=..., body=..., token=...)`, `download(path, token=...)` for files |
 | Scanner upload | `ApplicationClient.scan_position(jpeg_bytes, token)` |
 
-Public game filters include `query`, `archive_player`, `archive_event`, `since`,
-`until`, `sort`, `page` and `page_size`. Each export is capped at 300 games.
+Public game filters include `query`, `archive_player`, `archive_event`,
+`search_mode`, `since`, `until`, `sort`, `page` and `page_size`. `search_mode`
+chooses which fields `query` searches: `players` (players, event, site and
+date), `openings` (opening name and ECO) or `all` (the default). Each export is capped at 300 games.
 For larger archives, iterate games and export batches of up to 300 returned
 tokens. NDJSON means one JSON object per line; `pgn_in_json=False` omits the
 PGN field from that format. PGN is the standard text format for chess games.

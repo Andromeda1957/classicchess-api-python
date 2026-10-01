@@ -124,6 +124,16 @@ def extract_public_game_token(value: str) -> tuple[str, ...]:
     raise ApiError(f"Could not find a public game token in URL: {value}")
 
 
+
+PUBLIC_GAME_SEARCH_MODES = ("all", "players", "openings")
+
+
+def public_game_search_mode(value: str | None) -> str | None:
+    """players: players, event, site and date. openings: opening name and ECO. all: both."""
+    if value is not None and value not in PUBLIC_GAME_SEARCH_MODES:
+        raise ApiError("search_mode must be all, players or openings.", code="invalid_query")
+    return value
+
 class ClassicChessClient:
     """Dependency-free client for Classic Chess JSON, PGN, and account API endpoints."""
 
@@ -366,6 +376,7 @@ class ClassicChessClient:
         *,
         archive_player: str | None = None,
         archive_event: str | None = None,
+        search_mode: str | None = None,
         since: int | None = None,
         until: int | None = None,
         sort: str = "asc",
@@ -380,6 +391,7 @@ class ClassicChessClient:
                 "q": query,
                 "archive_player": archive_player,
                 "archive_event": archive_event,
+                "search_mode": public_game_search_mode(search_mode),
                 "since": since,
                 "until": until,
                 "sort": sort,
@@ -415,6 +427,7 @@ class ClassicChessClient:
         query: str = "",
         archive_player: str | None = None,
         archive_event: str | None = None,
+        search_mode: str | None = None,
         since: int | None = None,
         until: int | None = None,
         tokens: Iterable[str] | None = None,
@@ -437,6 +450,7 @@ class ClassicChessClient:
             )
         else:
             params["q"] = query
+            params["search_mode"] = public_game_search_mode(search_mode)
         if format == "ndjson":
             params["pgnInJson"] = "true" if pgn_in_json else "false"
         return self.get_text("/api/v1/public/games/export/", params)
@@ -557,11 +571,11 @@ class ClassicChessClient:
         )
 
     def iterate_public_games(self, query: str = '', *, archive_player=None, archive_event=None,
-                             since=None, until=None, sort='asc', page=1, page_size=50,
-                             limit: int | None = None, max_pages: int = 100_000):
+                             search_mode=None, since=None, until=None, sort='asc', page=1,
+                             page_size=50, limit: int | None = None, max_pages: int = 100_000):
         url = self._iteration_url('/api/v1/public/games/', {
             'q': query, 'archive_player': archive_player, 'archive_event': archive_event,
-            'since': since, 'until': until, 'sort': sort,
+            'search_mode': public_game_search_mode(search_mode), 'since': since, 'until': until, 'sort': sort,
         }, page, page_size)
         yield from self._iterate(url, limit, max_pages)
 
