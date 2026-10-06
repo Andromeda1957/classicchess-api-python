@@ -236,6 +236,8 @@ class SiteGapRequestTests(TestCase):
                             'POST', '/api/v1/account/notifications/5/read/', None)
         self.assert_request(lambda: api.account_mark_all_notifications_read('t'),
                             'POST', '/api/v1/account/notifications/read-all/', None)
+        self.assert_request(lambda: api.account_dismiss_all_notifications('t'),
+                            'POST', '/api/v1/account/notifications/dismiss-all/', None)
         self.assert_request(lambda: api.account_dismiss_notification(5, 't'),
                             'DELETE', '/api/v1/account/notifications/5/', None)
         self.assert_request(lambda: api.account_notification_preferences('t'),

@@ -444,6 +444,20 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PublicDailyGame'
+  /api/v1/public/event-of-the-day/:
+    get:
+      summary: Get today's Event of the day
+      description: 'The landmark tournament or title match on today''s homepage card: its name, one-line tagline and the winner the card pictures, with links to the event write-up. It rotates daily and skips an event whose winner another of the day''s homepage picks already pictures, so it always matches the homepage. event is null when no event can be published.'
+      operationId: getEventOfTheDay
+      tags:
+      - Curated events
+      responses:
+        '200':
+          description: The site date and today's event.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicEventOfTheDay'
   /api/v1/public/search/:
     get:
       summary: Search the curated archive like the site search box
@@ -4384,6 +4398,35 @@ paths:
                 $ref: '#/components/schemas/ApiError'
       x-required-scopes:
       - notifications:write
+  /api/v1/account/notifications/dismiss-all/:
+    post:
+      summary: Empty the inbox
+      description: Dismisses every notification in the inbox, as the website's empty-inbox trash does. Dismissed notifications leave the inbox and the unread count.
+      operationId: dismissAllNotifications
+      security:
+      - AccountApiToken: *id001
+      - MobileSessionToken: *id002
+      responses:
+        '200':
+          description: The number dismissed and the new unread count. Safe to retry.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountNotificationChange'
+        '401':
+          description: Missing, invalid, expired or revoked bearer token. Browser cookie sessions are not accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '403':
+          description: Personal API token is missing the notifications:write scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+      x-required-scopes:
+      - notifications:write
   /api/v1/account/notifications/preferences/:
     get:
       summary: Per-topic on-site notification choices and sound
@@ -7402,6 +7445,70 @@ components:
       - date
       - game
       type: object
+    EventOfTheDayWinner:
+      allOf:
+      - $ref: '#/components/schemas/PlayerIdentity'
+      - properties:
+          portrait:
+            properties:
+              image:
+                type: string
+              thumbnail:
+                type: string
+            type: object
+          urls:
+            allOf:
+            - $ref: '#/components/schemas/ResourceLinks'
+            - required:
+              - api_detail
+              - html_about
+        required:
+        - portrait
+        - urls
+        type: object
+      description: The study player the homepage pictures for the event.
+    EventOfTheDay:
+      properties:
+        name:
+          type: string
+        slug:
+          type: string
+        tagline:
+          description: One-line summary from the event write-up.
+          type: string
+        winner:
+          $ref: '#/components/schemas/EventOfTheDayWinner'
+        urls:
+          allOf:
+          - $ref: '#/components/schemas/ResourceLinks'
+          - required:
+            - api_detail
+            - api_about
+            - html_about
+      required:
+      - name
+      - slug
+      - tagline
+      - winner
+      - urls
+      type: object
+    PublicEventOfTheDay:
+      properties:
+        source:
+          const: public
+        date:
+          format: date
+          type: string
+        event:
+          anyOf:
+          - $ref: '#/components/schemas/EventOfTheDay'
+          - type: 'null'
+          description: null when no landmark event with a pictured winner can be published.
+      required:
+      - source
+      - date
+      - event
+      type: object
     PublicBeginnerGames:
       properties:
         source:
@@ -9215,6 +9322,8 @@ components:
         id:
           type: integer
         marked:
+          type: integer
+        dismissed:
           type: integer
         unread_count:
           type: integer

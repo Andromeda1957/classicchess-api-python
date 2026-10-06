@@ -77,6 +77,7 @@ class CapabilityParityTests(TestCase):
             (lambda: api.gallery_photo(67217590), '/api/v1/public/gallery/67217590/'),
             (lambda: api.beginner_games(), '/api/v1/public/beginner-games/'),
             (lambda: api.daily_game(), '/api/v1/public/daily/'),
+            (lambda: api.event_of_the_day(), '/api/v1/public/event-of-the-day/'),
             (lambda: api.public_imported_game('ann.lee+1', 'g1'), '/api/v1/public/imported-games/ann.lee+1/g1/'),
             (lambda: api.public_event('wcc-1972'), '/api/v1/public/events/wcc-1972/'),
             (lambda: api.public_event_about('wcc-1972'), '/api/v1/public/events/wcc-1972/about/'),

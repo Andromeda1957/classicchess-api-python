@@ -354,6 +354,10 @@ class ClassicChessClient:
     def daily_game(self) -> dict[str, Any]:
         return self.get_json("/api/v1/public/daily/")
 
+    def event_of_the_day(self) -> dict[str, Any]:
+        """The homepage's Event of the day; ``event`` is None when none can be published."""
+        return self.get_json("/api/v1/public/event-of-the-day/")
+
     def site_search(
         self, query: str, *, kind: str | None = None, page: int | None = None,
     ) -> dict[str, Any]:

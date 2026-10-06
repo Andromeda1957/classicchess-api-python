@@ -309,6 +309,10 @@ class ApplicationClient:
     def account_mark_all_notifications_read(self, token: str) -> ApplicationResponse:
         return self.request('/api/v1/account/notifications/read-all/', method='POST', token=token)
 
+    def account_dismiss_all_notifications(self, token: str) -> ApplicationResponse:
+        """Empty the inbox: dismiss every notification in it."""
+        return self.request('/api/v1/account/notifications/dismiss-all/', method='POST', token=token)
+
     def account_dismiss_notification(self, notification_id: int, token: str) -> ApplicationResponse:
         item = str(_positive_id(notification_id, 'notification ID'))
         return self.request('/api/v1/account/notifications/' + item + '/', method='DELETE', token=token)

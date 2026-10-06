@@ -86,6 +86,7 @@ Missing biographies are `None`, and notable lists can be empty.
 | Event detail and About page | `public_event(event_slug)`, `public_event_about(event_slug)` |
 | Photo gallery | `gallery(query=None, page=1, page_size=48)`, `gallery_photo(photo_id)` |
 | Beginner games and Game of the Day | `beginner_games()`, `daily_game()` |
+| Event of the day | `event_of_the_day()` returns the landmark event on today's homepage, its tagline and pictured winner; `event` is `None` when none can be published |
 | Site search | `site_search(query)` for a preview of players, events and games; `site_search(query, kind="games", page=2)` for one paginated kind |
 | Endgame tablebase | `tablebase(fen)` uses local Syzygy tables and falls back to the Lichess tablebase for larger positions, as the site does |
 | Account collections | `ApplicationClient.account_me(token)`, `account_collections(token)`, `account_create_collection(name, token)`, `account_import_public_player_games(archive_player, token, ...)` |
@@ -94,7 +95,7 @@ Missing biographies are `None`, and notable lists can be empty.
 | Change or delete imported games | `account_set_imported_game_visibility(slug, "public" or "private", token)`, `account_delete_imported_game(slug, token)` |
 | Public imported games | `public_imported_game(username, game_slug)`, `public_imported_pgn(username, game_slug)` read a game another account imported and made public, by its page address |
 | GIF exports | `ApplicationClient.master_game_gif(game_token, token)`, `public_game_gif(slug, token)`, `annotated_game_gif(book_slug, game_slug, token)`, `public_imported_game_gif(username, slug, token)`, `account_imported_game_gif(slug, token)`; add `orientation="black"` to flip the board |
-| Notifications | `account_notifications(token, page=1, page_size=50)`, `account_mark_notification_read(id, token)`, `account_mark_all_notifications_read(token)`, `account_dismiss_notification(id, token)`, `account_notification_preferences(token)`, `account_update_notification_preferences(token, topics=..., sound_enabled=...)` |
+| Notifications | `account_notifications(token, page=1, page_size=50)`, `account_mark_notification_read(id, token)`, `account_mark_all_notifications_read(token)`, `account_dismiss_notification(id, token)`, `account_dismiss_all_notifications(token)`, `account_notification_preferences(token)`, `account_update_notification_preferences(token, topics=..., sound_enabled=...)` |
 | Notebook exports | `account_notebooks(token)`, `account_notebook(uuid, token)`, `account_notebook_chapter_pgn(uuid, chapter_id, token)`, `account_notebook_file(uuid, token, password=None)` |
 | Play the Gym's bots | `account_gym(token)`, `account_gym_games(token, page=1, page_size=20)`, `account_gym_new_game(bot_key, token, color="white", time="unlimited")`, `account_gym_game(id, token)`, `account_gym_move(id, uci, ply, token)`, `account_gym_bot_move(id, ply, token)`, `account_gym_take_back(id, token)`, `account_gym_resign(id, token)`, `account_gym_clock(id, token)`, `account_gym_abort(id, token)`, `account_gym_delete_game(id, token)`, `account_gym_game_pgn(id, token)` |
 | Notebook, Remote, Cast and other application APIs | `ApplicationClient.request(path, method=..., body=..., token=...)`, `download(path, token=...)` for files |
