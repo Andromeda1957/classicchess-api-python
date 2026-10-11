@@ -504,6 +504,86 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiError'
+  /api/v1/public/themes/:
+    get:
+      summary: Study theme taxonomy, board rules, measured precision and game inventory
+      description: Automatic tags describe sustained board features. Curated tags and study_focus identify reviewed instructional examples; tags alone do not imply instructional quality.
+      operationId: listStudyThemes
+      tags:
+      - Public archive
+      responses:
+        '200':
+          description: Complete theme taxonomy with inventory links.
+          content:
+            application/json:
+              schema:
+                properties:
+                  source:
+                    const: public
+                  count:
+                    minimum: 0
+                    type: integer
+                  results:
+                    items:
+                      properties:
+                        slug:
+                          type: string
+                        label:
+                          type: string
+                        category:
+                          enum:
+                          - pawn-structure
+                          - endgame
+                          - middlegame
+                          type: string
+                        rule:
+                          type: string
+                        precision:
+                          properties:
+                            predicted_positive:
+                              minimum: 0
+                              type: integer
+                            true_positive:
+                              minimum: 0
+                              type: integer
+                            precision:
+                              type:
+                              - number
+                              - 'null'
+                            method:
+                              type: string
+                          required:
+                          - predicted_positive
+                          - true_positive
+                          - precision
+                          - method
+                          type: object
+                        game_count:
+                          minimum: 0
+                          type: integer
+                        urls:
+                          $ref: '#/components/schemas/ResourceLinks'
+                      required:
+                      - slug
+                      - label
+                      - category
+                      - rule
+                      - precision
+                      - game_count
+                      - urls
+                      type: object
+                    type: array
+                required:
+                - source
+                - count
+                - results
+                type: object
+        '503':
+          description: The reviewed catalog is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
   /api/v1/public/games/:
     get:
       summary: Search player- and event-backed public archive games
@@ -511,6 +591,45 @@ paths:
       tags:
       - Public archive
       parameters:
+      - name: theme
+        in: query
+        description: Comma-separated taxonomy slugs from /public/themes/. All requested tags must match.
+        schema:
+          maxLength: 512
+          type: string
+      - name: eco
+        in: query
+        description: ECO code or prefix, for example D or D30.
+        schema:
+          maxLength: 3
+          type: string
+      - name: result
+        in: query
+        schema:
+          enum:
+          - 1-0
+          - 0-1
+          - 1/2-1/2
+          - '*'
+          type: string
+      - name: annotation_q
+        in: query
+        description: Up to eight terms searched in published annotation note text; all terms must match.
+        schema:
+          maxLength: 160
+          type: string
+      - name: annotation_author
+        in: query
+        description: Author text in the published book/source label.
+        schema:
+          maxLength: 160
+          type: string
+      - name: annotation_book
+        in: query
+        description: Book title text in the published annotation source label.
+        schema:
+          maxLength: 160
+          type: string
       - name: q
         in: query
         schema:
@@ -588,6 +707,45 @@ paths:
       summary: Export player- and event-backed public archive games
       operationId: exportPublicGames
       parameters:
+      - name: theme
+        in: query
+        description: Comma-separated taxonomy slugs from /public/themes/. All requested tags must match.
+        schema:
+          maxLength: 512
+          type: string
+      - name: eco
+        in: query
+        description: ECO code or prefix, for example D or D30.
+        schema:
+          maxLength: 3
+          type: string
+      - name: result
+        in: query
+        schema:
+          enum:
+          - 1-0
+          - 0-1
+          - 1/2-1/2
+          - '*'
+          type: string
+      - name: annotation_q
+        in: query
+        description: Up to eight terms searched in published annotation note text; all terms must match.
+        schema:
+          maxLength: 160
+          type: string
+      - name: annotation_author
+        in: query
+        description: Author text in the published book/source label.
+        schema:
+          maxLength: 160
+          type: string
+      - name: annotation_book
+        in: query
+        description: Book title text in the published annotation source label.
+        schema:
+          maxLength: 160
+          type: string
       - name: q
         in: query
         description: At most 8 searchable terms.
@@ -701,6 +859,45 @@ paths:
       summary: Export public archive games by canonical or compatibility token body
       operationId: exportPublicGamesByToken
       parameters:
+      - name: theme
+        in: query
+        description: Comma-separated taxonomy slugs from /public/themes/. All requested tags must match.
+        schema:
+          maxLength: 512
+          type: string
+      - name: eco
+        in: query
+        description: ECO code or prefix, for example D or D30.
+        schema:
+          maxLength: 3
+          type: string
+      - name: result
+        in: query
+        schema:
+          enum:
+          - 1-0
+          - 0-1
+          - 1/2-1/2
+          - '*'
+          type: string
+      - name: annotation_q
+        in: query
+        description: Up to eight terms searched in published annotation note text; all terms must match.
+        schema:
+          maxLength: 160
+          type: string
+      - name: annotation_author
+        in: query
+        description: Author text in the published book/source label.
+        schema:
+          maxLength: 160
+          type: string
+      - name: annotation_book
+        in: query
+        description: Book title text in the published annotation source label.
+        schema:
+          maxLength: 160
+          type: string
       - name: q
         in: query
         description: At most 8 searchable terms.
@@ -1922,6 +2119,18 @@ paths:
           default: 50
           maximum: 100
           type: integer
+      - name: q
+        in: query
+        description: Search published annotation text; all words must match a note record. Maximum eight terms.
+        schema:
+          maxLength: 160
+          type: string
+      - name: author
+        in: query
+        description: Match author name words in the published source label. Maximum eight terms.
+        schema:
+          maxLength: 160
+          type: string
       responses:
         '200':
           description: Paginated annotated games.
@@ -1930,7 +2139,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/AnnotatedGamePage'
         '400':
-          description: page or page_size is invalid.
+          description: Pagination, q or author is invalid; repeated search parameters are rejected.
           content:
             application/json:
               schema:
@@ -2886,6 +3095,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiError'
+        '429':
+          description: Operation rejected; retain the error message and do not retry writes blindly.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
       x-required-scopes:
       - notebooks:read
   /api/v1/account/notebooks/{notebook_uuid}/chapters/{chapter_id}/pgn/:
@@ -3330,6 +3545,7 @@ paths:
           - date_desc
           - date_asc
           - player
+          - manual
           type: string
       responses:
         '200':
@@ -3393,7 +3609,14 @@ paths:
                   - date_desc
                   - date_asc
                   - player
+                  - manual
                   type: string
+                description:
+                  maxLength: 2000
+                  type: string
+                is_plan:
+                  description: True selects manual order unless sort is supplied.
+                  type: boolean
               type: object
       responses:
         '200':
@@ -3535,6 +3758,70 @@ paths:
       x-required-scopes:
       - library:write
   /api/v1/account/collections/{collection_id}/items/{item_id}/:
+    patch:
+      summary: Edit an item note or studied state
+      operationId: updateCollectionItem
+      security:
+      - AccountApiToken: *id001
+      - MobileSessionToken: *id002
+      parameters:
+      - name: collection_id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: item_id
+        in: path
+        required: true
+        schema:
+          type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              properties:
+                note:
+                  maxLength: 2000
+                  type: string
+                studied:
+                  description: Sets studied_at on false to true; false clears it. Repeated true preserves the timestamp.
+                  type: boolean
+              type: object
+      responses:
+        '200':
+          description: Saved item and progress; safe to retry.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountCollectionItem'
+        '400':
+          description: Validation error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          description: Missing, invalid, expired or revoked bearer token. Browser cookie sessions are not accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '403':
+          description: Personal API token is missing the library:write scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '404':
+          description: Collection not found for this account.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+      x-required-scopes:
+      - library:write
     delete:
       summary: Remove a game from an owned collection
       operationId: removeCollectionGame
@@ -3579,6 +3866,393 @@ paths:
                 $ref: '#/components/schemas/ApiError'
       x-required-scopes:
       - library:write
+  /api/v1/account/plans/:
+    post:
+      summary: Create an ordered study plan with notes
+      description: Atomic, up to 100 accessible games and 262144 request bytes. Uses only library:write. Same key and input return the existing plan; changed input returns 409. No partial plan is saved.
+      operationId: createPlan
+      security:
+      - AccountApiToken: *id001
+      - MobileSessionToken: *id002
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              properties:
+                name:
+                  maxLength: 120
+                  minLength: 1
+                  type: string
+                description:
+                  default: ''
+                  maxLength: 2000
+                  type: string
+                idempotency_key:
+                  description: Unique per account. Retry with the same creation input.
+                  maxLength: 80
+                  minLength: 1
+                  type: string
+                items:
+                  description: Games in exact playback order; each game appears once.
+                  items:
+                    additionalProperties: false
+                    properties:
+                      game:
+                        maxLength: 200
+                        minLength: 1
+                        type: string
+                      note:
+                        default: ''
+                        description: 'Plain text: why this game or what to look for.'
+                        maxLength: 2000
+                        type: string
+                    required:
+                    - game
+                    type: object
+                  maxItems: 100
+                  minItems: 1
+                  type: array
+              required:
+              - name
+              - idempotency_key
+              - items
+              type: object
+      responses:
+        '200':
+          description: Previously created plan for the same idempotency key.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - properties:
+                    collection:
+                      $ref: '#/components/schemas/AccountCollection'
+                    results:
+                      items:
+                        $ref: '#/components/schemas/AccountCollectionEntry'
+                      type: array
+                    progress:
+                      properties:
+                        count:
+                          minimum: 0
+                          type: integer
+                        studied:
+                          minimum: 0
+                          type: integer
+                        unstudied:
+                          minimum: 0
+                          type: integer
+                      required:
+                      - count
+                      - studied
+                      - unstudied
+                      type: object
+                    results_truncated:
+                      description: True above 100 entries; use paginated collection GET for the rest.
+                      type: boolean
+                  required:
+                  - collection
+                  - results
+                  - progress
+                  - results_truncated
+                  type: object
+                - properties:
+                    created:
+                      type: boolean
+                  required:
+                  - created
+                  type: object
+        '201':
+          description: New manual-order study plan.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - properties:
+                    collection:
+                      $ref: '#/components/schemas/AccountCollection'
+                    results:
+                      items:
+                        $ref: '#/components/schemas/AccountCollectionEntry'
+                      type: array
+                    progress:
+                      properties:
+                        count:
+                          minimum: 0
+                          type: integer
+                        studied:
+                          minimum: 0
+                          type: integer
+                        unstudied:
+                          minimum: 0
+                          type: integer
+                      required:
+                      - count
+                      - studied
+                      - unstudied
+                      type: object
+                    results_truncated:
+                      description: True above 100 entries; use paginated collection GET for the rest.
+                      type: boolean
+                  required:
+                  - collection
+                  - results
+                  - progress
+                  - results_truncated
+                  type: object
+                - properties:
+                    created:
+                      type: boolean
+                  required:
+                  - created
+                  type: object
+        '400':
+          description: Validation error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          description: Missing, invalid, expired or revoked bearer token. Browser cookie sessions are not accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '403':
+          description: Personal API token is missing the library:write scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '404':
+          description: A requested game is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '409':
+          description: Idempotency key already used for different creation input.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+      x-required-scopes:
+      - library:write
+  /api/v1/account/collections/{collection_id}/reorder/:
+    put:
+      summary: Set manual collection playback order
+      operationId: reorderCollection
+      security:
+      - AccountApiToken: *id001
+      - MobileSessionToken: *id002
+      parameters:
+      - name: collection_id
+        in: path
+        required: true
+        schema:
+          type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              properties:
+                item_ids:
+                  description: Every currently accessible collection item ID exactly once, in desired order.
+                  items:
+                    type: integer
+                  maxItems: 10000
+                  type: array
+              required:
+              - item_ids
+              type: object
+      responses:
+        '200':
+          description: Collection in its new manual order.
+          content:
+            application/json:
+              schema:
+                properties:
+                  collection:
+                    $ref: '#/components/schemas/AccountCollection'
+                  results:
+                    items:
+                      $ref: '#/components/schemas/AccountCollectionEntry'
+                    type: array
+                  progress:
+                    properties:
+                      count:
+                        minimum: 0
+                        type: integer
+                      studied:
+                        minimum: 0
+                        type: integer
+                      unstudied:
+                        minimum: 0
+                        type: integer
+                    required:
+                    - count
+                    - studied
+                    - unstudied
+                    type: object
+                  results_truncated:
+                    description: True above 100 entries; use paginated collection GET for the rest.
+                    type: boolean
+                required:
+                - collection
+                - results
+                - progress
+                - results_truncated
+                type: object
+        '400':
+          description: IDs are incomplete, duplicated, invalid, or exceed the bound.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          description: Missing, invalid, expired or revoked bearer token. Browser cookie sessions are not accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '403':
+          description: Personal API token is missing the library:write scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '404':
+          description: Collection not found for this account.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+      x-required-scopes:
+      - library:write
+  /api/v1/account/collections/{collection_id}/progress/:
+    get:
+      summary: Read collection notes and study progress
+      operationId: getPlanProgress
+      security:
+      - AccountApiToken: *id001
+      - MobileSessionToken: *id002
+      parameters:
+      - name: collection_id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: page
+        in: query
+        schema:
+          minimum: 1
+          type: integer
+      - name: page_size
+        in: query
+        schema:
+          maximum: 100
+          minimum: 1
+          type: integer
+      responses:
+        '200':
+          description: Progress for currently accessible collection items.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - properties:
+                    count:
+                      minimum: 0
+                      type: integer
+                    studied:
+                      minimum: 0
+                      type: integer
+                    unstudied:
+                      minimum: 0
+                      type: integer
+                  required:
+                  - count
+                  - studied
+                  - unstudied
+                  type: object
+                - properties:
+                    collection_id:
+                      type: integer
+                    results:
+                      items:
+                        properties:
+                          collection_item_id:
+                            type: integer
+                          game:
+                            type: string
+                          position:
+                            minimum: 0
+                            type: integer
+                          note:
+                            type: string
+                          studied:
+                            type: boolean
+                          studied_at:
+                            type:
+                            - string
+                            - 'null'
+                            format: date-time
+                        required:
+                        - collection_item_id
+                        - game
+                        - position
+                        - note
+                        - studied
+                        - studied_at
+                        type: object
+                      type: array
+                    page:
+                      minimum: 1
+                      type: integer
+                    page_size:
+                      maximum: 100
+                      minimum: 1
+                      type: integer
+                    page_count:
+                      minimum: 1
+                      type: integer
+                  required:
+                  - collection_id
+                  - results
+                  - page
+                  - page_size
+                  - page_count
+                  type: object
+        '400':
+          description: Invalid pagination.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          description: Missing, invalid, expired or revoked bearer token. Browser cookie sessions are not accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '403':
+          description: Personal API token is missing the library:read scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '404':
+          description: Collection not found for this account.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+      x-required-scopes:
+      - library:read
   /api/v1/account/collections/import/:
     post:
       summary: Import public archive player games into an account collection
@@ -5736,6 +6410,10 @@ components:
       type: object
     PublicGame:
       properties:
+        slug:
+          default: ''
+          description: Canonical game slug for plan items and canonical PGN routes.
+          type: string
         token:
           description: Canonical slug on new detail and notable routes; legacy player/slug tokens remain valid.
           type: string
@@ -5777,6 +6455,35 @@ components:
         eco:
           type: string
         opening:
+          type: string
+        themes:
+          items:
+            properties:
+              slug:
+                type: string
+              label:
+                type: string
+              category:
+                enum:
+                - pawn-structure
+                - endgame
+                - middlegame
+                type: string
+              origin:
+                enum:
+                - automatic
+                - curated
+                type: string
+            required:
+            - slug
+            - label
+            - category
+            - origin
+            type: object
+          type: array
+        study_focus:
+          default: ''
+          description: Original curated guidance, empty for unreviewed games.
           type: string
         event_round:
           description: Curated round label when sort=event.
@@ -5859,6 +6566,25 @@ components:
           - asc
           - desc
           - event
+          type: string
+        theme:
+          items:
+            type: string
+          type: array
+        eco:
+          default: ''
+          type: string
+        result:
+          default: ''
+          type: string
+        annotation_q:
+          default: ''
+          type: string
+        annotation_author:
+          default: ''
+          type: string
+        annotation_book:
+          default: ''
           type: string
         count:
           minimum: 0
@@ -8496,6 +9222,21 @@ components:
             - string
             - 'null'
             format: date-time
+          position:
+            default: 0
+            minimum: 0
+            type: integer
+          note:
+            default: ''
+            type: string
+          studied:
+            default: false
+            type: boolean
+          studied_at:
+            type:
+            - string
+            - 'null'
+            format: date-time
           changed:
             type: boolean
           message:
@@ -8630,6 +9371,12 @@ components:
           type: integer
         name:
           type: string
+        description:
+          default: ''
+          type: string
+        is_plan:
+          default: false
+          type: boolean
         sort:
           description: The collection's saved sort preference.
           enum:
@@ -8637,6 +9384,7 @@ components:
           - date_desc
           - date_asc
           - player
+          - manual
           type: string
         game_count:
           minimum: 0
@@ -8674,6 +9422,21 @@ components:
             - string
             - 'null'
             format: date-time
+          position:
+            default: 0
+            minimum: 0
+            type: integer
+          note:
+            default: ''
+            type: string
+          studied:
+            default: false
+            type: boolean
+          studied_at:
+            type:
+            - string
+            - 'null'
+            format: date-time
         required:
         - collection_item_id
         - added_at
@@ -8690,6 +9453,7 @@ components:
           - date_desc
           - date_asc
           - player
+          - manual
           type: string
         count:
           minimum: 0

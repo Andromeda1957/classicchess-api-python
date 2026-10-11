@@ -6,25 +6,27 @@ The SDK also searches the larger MasterDB game database, retrieves opening
 statistics, exports games, and calls account and application APIs.
 
 Public reads need no account or API key. The SDK uses the Python standard
-library and is MIT licensed; see [LICENSE](LICENSE).
+library and is MIT licensed; see
+[LICENSE](https://github.com/Andromeda1957/classicchess-api-python/blob/main/LICENSE).
 
 ## Install and run your first example
 
-Install [Python 3.10 or newer](https://www.python.org/downloads/) and
-[Git](https://git-scm.com/). In a terminal, create an isolated Python environment
-and install directly from this public repository:
+Install [Python 3.10 or newer](https://www.python.org/downloads/). In a terminal,
+create an isolated Python environment and install from
+[PyPI](https://pypi.org/project/classicchess-sdk/):
 
 ```sh
 python3 -m venv classicchess-env
 source classicchess-env/bin/activate
-python3 -m pip install git+https://github.com/Andromeda1957/classicchess-api-python.git
+python3 -m pip install classicchess-sdk
 classicchess-api public players --names
 ```
 
 On Windows PowerShell, use `py` instead of `python3` and activate with
 `classicchess-env\Scripts\Activate.ps1` instead of the `source` command.
-The last command prints the names of all curated players. This package is not
-published to PyPI yet; the GitHub URL above is the install source.
+The last command prints the names of all curated players. To install from the
+public source repository instead, install [Git](https://git-scm.com/) and use
+`python3 -m pip install git+https://github.com/Andromeda1957/classicchess-api-python.git`.
 
 To use it in a Python program, create `example.py` with this complete example:
 
@@ -36,8 +38,13 @@ print(api.player_names()[:10])
 ```
 
 Run `python3 example.py` in the same activated environment. You should see up to
-ten player names. The import is `classicchess_api`; the command-line executable
-is `classicchess-api`. `python3 -m classicchess_api` runs the same command-line tool.
+ten player names. The PyPI distribution is `classicchess-sdk`; the import is
+`classicchess_api` and the command-line executable is `classicchess-api`. `python3 -m classicchess_api` runs the same command-line tool.
+
+If you installed the previous `classicchess-api` distribution, run
+`python3 -m pip uninstall classicchess-api` before installing `classicchess-sdk`
+in that environment. Both distributions provide the same import and command,
+so install only one. Existing Python programs and CLI commands still work.
 
 ## Read a player archive
 
@@ -201,7 +208,7 @@ There are no automatic retries. Respect `Retry-After` and avoid blindly retrying
 ## Optional standalone command-line script
 
 If you only want command-line commands without installing the Python package,
-GitHub also provides [pull_api.py](pull_api.py). Save that file and run
+GitHub also provides [pull_api.py](https://github.com/Andromeda1957/classicchess-api-python/blob/main/pull_api.py). Save that file and run
 `python3 pull_api.py public players --names`. It is the dependency-free CLI
 variant; the importable SDK and application transport are installed by the
 steps above. The Classic Chess website no longer serves a script download URI.

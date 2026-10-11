@@ -27,7 +27,7 @@ from urllib.request import build_opener
 from urllib.request import urlopen
 
 DEFAULT_BASE_URL = "https://classicchess.com"
-USER_AGENT = "classicchess-python-client/0.1.0"
+USER_AGENT = "classicchess-python-client/0.1.1"
 
 
 # Embedded from classicchess_api/response.py for the dependency-free download.

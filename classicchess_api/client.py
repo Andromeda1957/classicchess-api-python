@@ -26,7 +26,7 @@ from classicchess_api.response import decode_json_object
 from classicchess_api.response import read_bounded
 
 DEFAULT_BASE_URL = "https://classicchess.com"
-USER_AGENT = "classicchess-python-client/0.1.0"
+USER_AGENT = "classicchess-python-client/0.1.1"
 LICHESS_USERNAME = re.compile(r"^[A-Za-z0-9_-]{2,30}$")
 LICHESS_EXPLORER_COLORS = ("both", "white", "black")
 LICHESS_EXPLORER_RESULTS = ("all", "win", "loss", "draw")
