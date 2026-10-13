@@ -105,6 +105,7 @@ Missing biographies are `None`, and notable lists can be empty.
 | Notifications | `account_notifications(token, page=1, page_size=50)`, `account_mark_notification_read(id, token)`, `account_mark_all_notifications_read(token)`, `account_dismiss_notification(id, token)`, `account_dismiss_all_notifications(token)`, `account_notification_preferences(token)`, `account_update_notification_preferences(token, topics=..., sound_enabled=...)` |
 | Notebook exports | `account_notebooks(token)`, `account_notebook(uuid, token)`, `account_notebook_chapter_pgn(uuid, chapter_id, token)`, `account_notebook_file(uuid, token, password=None)` |
 | Play the Gym's bots | `account_gym(token)`, `account_gym_games(token, page=1, page_size=20)`, `account_gym_new_game(bot_key, token, color="white", time="unlimited")`, `account_gym_game(id, token)`, `account_gym_move(id, uci, ply, token)`, `account_gym_bot_move(id, ply, token)`, `account_gym_take_back(id, token)`, `account_gym_resign(id, token)`, `account_gym_clock(id, token)`, `account_gym_abort(id, token)`, `account_gym_delete_game(id, token)`, `account_gym_game_pgn(id, token)` |
+| Puzzles | `account_puzzles(token)`, `account_puzzle_next(token, after=None)`, `account_puzzle(id, token)`, `account_puzzle_result(id, "solved" or "missed", token)`, `account_puzzle_history(token, page=1, page_size=20)`, `account_puzzle_reset(token)` |
 | Notebook, Remote, Cast and other application APIs | `ApplicationClient.request(path, method=..., body=..., token=...)`, `download(path, token=...)` for files |
 | Scanner upload | `ApplicationClient.scan_position(jpeg_bytes, token)` |
 
@@ -188,6 +189,47 @@ while reply.status == 429 and reply.data["error"]["code"] == "capacity_exhausted
     time.sleep(int(reply.retry_after or 1))
     reply = api.account_gym_bot_move(game["id"], game["ply"], token)
 print(reply.status, reply.data.get("sans"), reply.data.get("clock"))
+```
+
+### Play puzzles
+
+Puzzles come from master games and are for signed-in accounts only. Personal
+tokens need `puzzles:read` to read puzzles, figures and history and
+`puzzles:write` to save a result or reset; cookie sessions are never enough.
+Each account has its own rotation: a puzzle solved on the first try leaves it
+until reset, and a missed one stays. A puzzle carries the game so far
+(`start_fen` and `lead`), the position (`fen`) and `solution.moves`: the
+accepted solver moves at each point are the entries whose `after` equals the
+moves played so far. Save each play once, `missed` at the first wrong move or
+when the solution is shown and `solved` for a clean finish. A 404
+`rotation_empty` reply means every puzzle is solved; reset to play them again.
+
+This plays one puzzle in the terminal and saves how it went:
+
+```python
+import os
+from classicchess_api import ApplicationClient
+
+token = os.environ["CLASSICCHESS_API_TOKEN"]  # a token with puzzles:read and puzzles:write
+api = ApplicationClient()
+puzzle = api.account_puzzle_next(token)
+if not puzzle.ok:
+    raise SystemExit(f"{puzzle.status} {puzzle.data}")
+print(puzzle.data["prompt"], puzzle.data["fen"])
+played, result = [], "solved"
+while True:
+    accepted = {m["move"]: m["reply"] for m in puzzle.data["solution"]["moves"] if m["after"] == played}
+    answer = input("Your move in UCI, such as e2e4: ").strip()
+    if answer not in accepted:
+        result = "missed"
+        break
+    played.append(answer)
+    if accepted[answer] is None:
+        break
+    print("Reply:", accepted[answer])
+    played.append(accepted[answer])
+saved = api.account_puzzle_result(puzzle.data["id"], result, token)
+print(saved.data["result"], saved.data["summary"])
 ```
 
 The CLI reads `CLASSICCHESS_API_TOKEN` for account commands. Existing installations

@@ -81,6 +81,16 @@ def _ply(value):
     return value
 
 
+PUZZLE_ID = re.compile(r'p-[0-9a-f]{8}')
+PUZZLE_RESULTS = ('solved', 'missed')
+
+
+def _puzzle_id(value):
+    if not isinstance(value, str) or not PUZZLE_ID.fullmatch(value):
+        raise ApiError('Use a puzzle ID such as p-000ccc1f.', code='invalid_request')
+    return value
+
+
 def _gym_new_game_body(color, time, minutes, increment):
     if color not in GYM_COLORS:
         raise ApiError('color must be white, black or random.', code='invalid_request')
@@ -420,6 +430,37 @@ class ApplicationClient:
     def _gym_post(self, game_id, action, token, body=None):
         return self.request(_gym_game(game_id) + action, method='POST',
                             body=json.dumps(body) if body is not None else None, token=token)
+
+    # Puzzles, for signed-in accounts only. Personal tokens need puzzles:read to
+    # read and puzzles:write to save results and reset; device sessions pass both.
+    def account_puzzles(self, token: str) -> ApplicationResponse:
+        """Your figures: first-try solves, misses, what is left in your rotation, and the total."""
+        return self.request('/api/v1/account/puzzles/', token=token)
+
+    def account_puzzle_next(self, token: str, *, after=None) -> ApplicationResponse:
+        """A random puzzle from your rotation, another than ``after`` (the one just played) when
+        there is one. A 404 rotation_empty means every puzzle is solved; reset to play them again."""
+        query = '' if after is None else '?after=' + _puzzle_id(after)
+        return self.request('/api/v1/account/puzzles/next/' + query, token=token)
+
+    def account_puzzle(self, puzzle_id: str, token: str) -> ApplicationResponse:
+        return self.request('/api/v1/account/puzzles/' + _puzzle_id(puzzle_id) + '/', token=token)
+
+    def account_puzzle_result(self, puzzle_id: str, result: str, token: str) -> ApplicationResponse:
+        """Save one play: "missed" at the first wrong move or when the solution is shown, "solved"
+        for a clean finish. A first-try solve stands until reset, so the saved result can differ."""
+        if result not in PUZZLE_RESULTS:
+            raise ApiError('result must be solved or missed.', code='invalid_request')
+        path = '/api/v1/account/puzzles/' + _puzzle_id(puzzle_id) + '/result/'
+        return self.request(path, method='POST', body=json.dumps({'result': result}), token=token)
+
+    def account_puzzle_history(self, token: str, *, page=1, page_size=20) -> ApplicationResponse:
+        """The puzzles you have played and how you did, most recent first."""
+        return self.request('/api/v1/account/puzzles/history/?' + _page_query(page, page_size), token=token)
+
+    def account_puzzle_reset(self, token: str) -> ApplicationResponse:
+        """Every puzzle goes back into your rotation. Your history stays."""
+        return self.request('/api/v1/account/puzzles/reset/', method='POST', token=token)
 
     def scan_position(self, image: bytes, token: str) -> ApplicationResponse:
         if not isinstance(image, bytes) or not 1 <= len(image) <= 850_000:

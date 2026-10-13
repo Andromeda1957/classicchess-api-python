@@ -298,6 +298,38 @@ class SiteGapRequestTests(TestCase):
             with self.subTest(action=action):
                 self.assert_request(lambda call=call: call(7, 't'), 'POST', game + action, None)
 
+    def test_puzzle_requests_use_exact_methods_paths_and_bodies(self):
+        api = ApplicationClient()
+        base = '/api/v1/account/puzzles/'
+        self.assert_request(lambda: api.account_puzzles('t'), 'GET', base, None)
+        self.assert_request(lambda: api.account_puzzle_next('t'), 'GET', base + 'next/', None)
+        self.assert_request(lambda: api.account_puzzle_next('t', after='p-000ccc1f'),
+                            'GET', base + 'next/?after=p-000ccc1f', None)
+        self.assert_request(lambda: api.account_puzzle('p-000ccc1f', 't'), 'GET', base + 'p-000ccc1f/', None)
+        self.assert_request(lambda: api.account_puzzle_result('p-000ccc1f', 'missed', 't'),
+                            'POST', base + 'p-000ccc1f/result/', {'result': 'missed'})
+        self.assert_request(lambda: api.account_puzzle_history('t', page=2, page_size=10),
+                            'GET', base + 'history/?page=2&page_size=10', None)
+        self.assert_request(lambda: api.account_puzzle_reset('t'), 'POST', base + 'reset/', None)
+
+    def test_puzzle_helpers_reject_invalid_arguments_before_sending(self):
+        api = ApplicationClient()
+        calls = [
+            lambda: api.account_puzzle('../me', 't'),
+            lambda: api.account_puzzle('p-000CCC1F', 't'),
+            lambda: api.account_puzzle(7, 't'),
+            lambda: api.account_puzzle_next('t', after='p-1'),
+            lambda: api.account_puzzle_result('p-000ccc1f', 'skipped', 't'),
+            lambda: api.account_puzzle_result('p-000ccc1f/..', 'solved', 't'),
+            lambda: api.account_puzzle_history('t', page=0),
+            lambda: api.account_puzzle_history('t', page_size=101),
+        ]
+        with patch('classicchess_api.application.build_opener') as opener:
+            for call in calls:
+                with self.subTest(call=call), self.assertRaises(ApiError):
+                    call()
+        opener.return_value.open.assert_not_called()
+
     def test_gym_pgn_downloads_and_a_busy_engine_keeps_its_retry_after(self):
         api = ApplicationClient()
         with patch('classicchess_api.application.build_opener') as opener:

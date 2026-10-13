@@ -2921,6 +2921,272 @@ paths:
                 $ref: '#/components/schemas/ApiError'
       x-required-scopes:
       - gym:play
+  /api/v1/account/puzzles/:
+    get:
+      summary: The account's puzzle figures
+      description: Puzzles come from master games and are for signed-in accounts only. A puzzle solved on the first try leaves the rotation until Reset puzzles; a missed one stays in it.
+      operationId: getPuzzleSummary
+      security:
+      - AccountApiToken: *id001
+      - MobileSessionToken: *id002
+      responses:
+        '200':
+          description: First-try solves, misses, the rotation and the total.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PuzzleSummary'
+        '401':
+          description: Missing, invalid, expired or revoked bearer token. Browser cookie sessions are not accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '403':
+          description: Personal API token is missing the puzzles:read scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+      x-required-scopes:
+      - puzzles:read
+  /api/v1/account/puzzles/next/:
+    get:
+      summary: A random puzzle from the account's rotation
+      description: The accepted solver moves at each point are the solution.moves entries whose after equals the moves played so far; any other solver move is wrong. Report missed at the first wrong move or when the solution is shown, and solved for a clean finish.
+      operationId: getNextPuzzle
+      security:
+      - AccountApiToken: *id001
+      - MobileSessionToken: *id002
+      parameters:
+      - name: after
+        in: query
+        description: The puzzle just played, so another one comes next when the rotation has one.
+        schema:
+          pattern: ^p-[0-9a-f]{8}$
+          type: string
+      responses:
+        '200':
+          description: The puzzle, its game so far and its solution.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Puzzle'
+        '400':
+          description: 'invalid_puzzle_id: after is not a puzzle id.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          description: Missing, invalid, expired or revoked bearer token. Browser cookie sessions are not accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '403':
+          description: Personal API token is missing the puzzles:read scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '404':
+          description: 'rotation_empty: every puzzle is solved on the first try. Reset puzzles to play them again.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+      x-required-scopes:
+      - puzzles:read
+  /api/v1/account/puzzles/history/:
+    get:
+      summary: The account's played puzzles, most recent first
+      description: Reset puzzles keeps the history.
+      operationId: listPuzzleHistory
+      security:
+      - AccountApiToken: *id001
+      - MobileSessionToken: *id002
+      parameters:
+      - name: page
+        in: query
+        schema:
+          default: 1
+          minimum: 1
+          type: integer
+      - name: page_size
+        in: query
+        schema:
+          default: 20
+          maximum: 100
+          minimum: 1
+          type: integer
+      responses:
+        '200':
+          description: One page of played puzzles.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PuzzleHistoryPage'
+        '400':
+          description: invalid_pagination.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          description: Missing, invalid, expired or revoked bearer token. Browser cookie sessions are not accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '403':
+          description: Personal API token is missing the puzzles:read scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+      x-required-scopes:
+      - puzzles:read
+  /api/v1/account/puzzles/reset/:
+    post:
+      summary: Reset puzzles
+      description: Every puzzle returns to the rotation. The history keeps its results.
+      operationId: resetPuzzles
+      security:
+      - AccountApiToken: *id001
+      - MobileSessionToken: *id002
+      responses:
+        '200':
+          description: How many results returned to the rotation, and the new figures.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PuzzleReset'
+        '401':
+          description: Missing, invalid, expired or revoked bearer token. Browser cookie sessions are not accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '403':
+          description: Personal API token is missing the puzzles:write scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+      x-required-scopes:
+      - puzzles:write
+  /api/v1/account/puzzles/{public_id}/:
+    get:
+      summary: One puzzle
+      description: Any published puzzle, for example one from the history.
+      operationId: getPuzzle
+      security:
+      - AccountApiToken: *id001
+      - MobileSessionToken: *id002
+      parameters:
+      - name: public_id
+        in: path
+        required: true
+        schema:
+          example: p-000ccc1f
+          type: string
+      responses:
+        '200':
+          description: The puzzle, its game so far and its solution.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Puzzle'
+        '401':
+          description: Missing, invalid, expired or revoked bearer token. Browser cookie sessions are not accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '403':
+          description: Personal API token is missing the puzzles:read scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '404':
+          description: 'No such puzzle: an unknown or withdrawn id.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+      x-required-scopes:
+      - puzzles:read
+  /api/v1/account/puzzles/{public_id}/result/:
+    post:
+      summary: Save how one play of a puzzle went
+      description: A first-try solve stands until Reset puzzles, so the saved result can differ from the one sent.
+      operationId: recordPuzzleResult
+      security:
+      - AccountApiToken: *id001
+      - MobileSessionToken: *id002
+      parameters:
+      - name: public_id
+        in: path
+        required: true
+        schema:
+          example: p-000ccc1f
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              properties:
+                result:
+                  description: missed at the first wrong move or when the solution is shown; solved for a finish with no wrong move. Report each play once.
+                  enum:
+                  - solved
+                  - missed
+                  type: string
+              required:
+              - result
+              type: object
+      responses:
+        '200':
+          description: The saved result and the new figures.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PuzzleResultSaved'
+        '400':
+          description: invalid_result or invalid_json.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          description: Missing, invalid, expired or revoked bearer token. Browser cookie sessions are not accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '403':
+          description: Personal API token is missing the puzzles:write scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '404':
+          description: 'No such puzzle: an unknown or withdrawn id.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '413':
+          description: 'too_large: the body is over 1 KB.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+      x-required-scopes:
+      - puzzles:write
   /api/v1/account/notebooks/:
     get:
       summary: Notebooks the account owns or was invited to
@@ -10503,6 +10769,303 @@ components:
       - ok
       - id
       - aborted
+      type: object
+    PuzzleSummary:
+      properties:
+        solved:
+          description: Puzzles solved on the first try since the last reset; they left the rotation.
+          type: integer
+        missed:
+          description: Puzzles missed since the last reset; they stay in the rotation.
+          type: integer
+        rotation:
+          description: 'Puzzles the account still meets: every puzzle but its first-try solves.'
+          type: integer
+        total:
+          description: Published puzzles.
+          type: integer
+      required:
+      - solved
+      - missed
+      - rotation
+      - total
+      type: object
+    PuzzleMove:
+      properties:
+        after:
+          description: The moves already played from the puzzle position, in UCI, solver and opponent alternating; empty for the first solver move.
+          items:
+            type: string
+          type: array
+        move:
+          description: An accepted solver move in UCI.
+          type: string
+        reply:
+          type:
+          - string
+          - 'null'
+          description: The opponent's UCI reply, or null when this move solves the puzzle.
+        from_game:
+          description: True when the game itself continued with this move.
+          type: boolean
+      required:
+      - after
+      - move
+      - reply
+      - from_game
+      type: object
+    PuzzleSolution:
+      properties:
+        main:
+          description: The main line in UCI, solver and opponent moves alternating.
+          items:
+            type: string
+          type: array
+        main_san:
+          description: The main line in SAN.
+          items:
+            type: string
+          type: array
+        moves:
+          description: Every accepted solver move, depth first. The accepted moves at a point are the entries whose after equals the moves played so far; any other solver move is wrong.
+          items:
+            $ref: '#/components/schemas/PuzzleMove'
+          type: array
+      required:
+      - main
+      - main_san
+      - moves
+      type: object
+    Puzzle:
+      properties:
+        id:
+          example: p-000ccc1f
+          type: string
+        heading:
+          type: string
+        prompt:
+          description: What the solver must find, for example "Find the best move for White."
+          type: string
+        solver:
+          enum:
+          - white
+          - black
+          type: string
+        white:
+          type: string
+        black:
+          type: string
+        event:
+          type: string
+        year:
+          type:
+          - integer
+          - 'null'
+        goal:
+          enum:
+          - mate
+          - advantage
+          - equality
+          type: string
+        goal_label:
+          type: string
+        mate_in:
+          type:
+          - integer
+          - 'null'
+        start_fen:
+          description: 'Where lead starts: the game start, or fen itself when lead is empty.'
+          type: string
+        lead:
+          description: The game in UCI from start_fen to the puzzle position, so a client can replay it. Empty for a puzzle the game cannot reach, such as a book diagram.
+          items:
+            type: string
+          type: array
+        fen:
+          description: The puzzle position, with the solver to move.
+          type: string
+        solution:
+          $ref: '#/components/schemas/PuzzleSolution'
+        info_rows:
+          description: The source game's facts, else the puzzle's own.
+          items:
+            properties:
+              label:
+                description: A PGN tag name such as Event, Date, White or WhiteElo.
+                type: string
+              value:
+                type: string
+            required:
+            - label
+            - value
+            type: object
+          type: array
+        game:
+          type:
+          - object
+          - 'null'
+          properties:
+            api:
+              description: 'The game in the public JSON API: an archive game or a MasterDB game.'
+              type: string
+            html:
+              description: The game page at the puzzle position.
+              type: string
+            ply:
+              description: Half-moves from the start of the game to the puzzle position.
+              type: integer
+          required:
+          - api
+          - html
+          - ply
+          description: The source game, or null when it is not available.
+        urls:
+          properties:
+            api:
+              type: string
+            result:
+              description: POST how this play went.
+              type: string
+            next:
+              description: GET another puzzle from the rotation.
+              type: string
+            html:
+              description: The puzzle on the website.
+              type: string
+          required:
+          - api
+          - result
+          - next
+          - html
+          type: object
+      required:
+      - id
+      - heading
+      - prompt
+      - solver
+      - white
+      - black
+      - event
+      - year
+      - goal
+      - goal_label
+      - mate_in
+      - start_fen
+      - lead
+      - fen
+      - solution
+      - info_rows
+      - game
+      - urls
+      type: object
+    PuzzleResultSaved:
+      properties:
+        id:
+          type: string
+        result:
+          description: The saved result. A first-try solve stands until Reset puzzles, so replaying a solved puzzle never puts it back in the rotation.
+          enum:
+          - solved
+          - missed
+          type: string
+        summary:
+          $ref: '#/components/schemas/PuzzleSummary'
+      required:
+      - id
+      - result
+      - summary
+      type: object
+    PuzzleHistoryEntry:
+      properties:
+        id:
+          type: string
+        result:
+          enum:
+          - solved
+          - missed
+          type: string
+        result_label:
+          enum:
+          - Solved
+          - Incorrect
+          type: string
+        played_at:
+          description: When the result was saved, ISO 8601 in UTC.
+          type: string
+        white:
+          type: string
+        black:
+          type: string
+        event:
+          type: string
+        year:
+          type:
+          - integer
+          - 'null'
+        fen:
+          type: string
+        solver:
+          enum:
+          - white
+          - black
+          type: string
+        last_move:
+          type:
+          - string
+          - 'null'
+          description: The UCI move that led to the puzzle position.
+        urls:
+          properties:
+            api:
+              type: string
+          required:
+          - api
+          type: object
+      required:
+      - id
+      - result
+      - result_label
+      - played_at
+      - white
+      - black
+      - event
+      - year
+      - fen
+      - solver
+      - last_move
+      - urls
+      type: object
+    PuzzleHistoryPage:
+      properties:
+        count:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+        page_count:
+          type: integer
+        results:
+          items:
+            $ref: '#/components/schemas/PuzzleHistoryEntry'
+          type: array
+      required:
+      - count
+      - page
+      - page_size
+      - page_count
+      - results
+      type: object
+    PuzzleReset:
+      properties:
+        reset:
+          description: Results returned to the rotation; the history keeps them.
+          type: integer
+        summary:
+          $ref: '#/components/schemas/PuzzleSummary'
+      required:
+      - reset
+      - summary
       type: object
   securitySchemes:
     AccountApiToken:
