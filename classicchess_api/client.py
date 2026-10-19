@@ -11,6 +11,8 @@ from urllib.error import URLError
 from urllib.parse import urlencode
 from urllib.parse import urljoin
 from urllib.parse import urlparse
+from urllib.parse import urlsplit
+from urllib.request import HTTPRedirectHandler
 from urllib.request import Request
 from urllib.request import build_opener
 from urllib.request import urlopen
@@ -30,6 +32,19 @@ USER_AGENT = "classicchess-python-client/0.1.1"
 LICHESS_USERNAME = re.compile(r"^[A-Za-z0-9_-]{2,30}$")
 LICHESS_EXPLORER_COLORS = ("both", "white", "black")
 LICHESS_EXPLORER_RESULTS = ("all", "win", "loss", "draw")
+
+
+def ccnb_format_header(value):
+    if value is None:
+        return None
+    if type(value) is not int or value not in (2, 3):
+        raise ApiError('CCNB format must be 2 or 3.', code='invalid_request')
+    return str(value)
+
+
+class _NoDownloadRedirect(HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
 
 
 def http_api_error(exc, url, body):
@@ -162,6 +177,7 @@ class ClassicChessClient:
         method: str = "GET",
         body: bytes | None = None,
         headers: dict[str, str] | None = None,
+        follow_redirects: bool = True,
     ) -> tuple[bytes, str]:
         request_headers = {"User-Agent": self.user_agent}
         request_headers.update(headers or {})
@@ -175,6 +191,8 @@ class ClassicChessClient:
             if carries_credentials:
                 opener = build_opener(SameOriginHTTPSRedirectHandler(self.base_url))
                 response_context = opener.open(request, timeout=self.timeout)
+            elif not follow_redirects:
+                response_context = build_opener(_NoDownloadRedirect()).open(request, timeout=self.timeout)
             else:
                 response_context = urlopen(request, timeout=self.timeout)
             with response_context as response:
@@ -303,17 +321,21 @@ class ClassicChessClient:
     def public_players(self, query: str | None = None) -> dict[str, Any]:
         return self.get_json("/api/v1/public/players/", {"q": query})
 
+    def public_player_cards(self, query: str | None = None) -> dict[str, Any]:
+        """The players catalog for lists and pickers: biography headline only, about a tenth the size."""
+        return self.get_json("/api/v1/public/players/cards/", {"q": query})
+
     def discovery(self) -> dict[str, Any]:
         return self.get_json("/api/v1/")
 
     def player_names(self, query: str | None = None) -> list[str]:
-        return [player['name'] for player in self.public_players(query)['results']]
+        return [player['name'] for player in self.public_player_cards(query)['results']]
 
     def event_names(self, query: str | None = None) -> list[str]:
         return [event['name'] for event in self.public_events(query)['results']]
 
-    def book_titles(self) -> list[str]:
-        return [book['label'] for book in self.annotated_books()['results']]
+    def book_titles(self, *, ccnb_format=None) -> list[str]:
+        return [book['label'] for book in self.annotated_books(ccnb_format=ccnb_format)['results']]
 
     def event_series(self, query: str | None = None, series: str | None = None) -> dict[str, Any]:
         if query and series or query and len(query) > 120 or series and not re.fullmatch(r'[a-z0-9-]{1,160}', series):
@@ -357,6 +379,10 @@ class ClassicChessClient:
     def event_of_the_day(self) -> dict[str, Any]:
         """The homepage's Event of the day; ``event`` is None when none can be published."""
         return self.get_json("/api/v1/public/event-of-the-day/")
+
+    def todays_picks(self) -> dict[str, Any]:
+        """Every face of today's homepage card; each of player, game, on_this_day and event may be None."""
+        return self.get_json("/api/v1/public/todays-picks/")
 
     def site_search(
         self, query: str, *, kind: str | None = None, page: int | None = None,
@@ -557,8 +583,32 @@ class ClassicChessClient:
             params.update({"player": player, "color": color, "result": result})
         return self.get_json("/api/v1/opening-explorer/lichess/", params)
 
-    def annotated_books(self) -> dict[str, Any]:
-        return self.get_json("/api/v1/annotated/books/")
+    def annotated_books(self, *, ccnb_format=None) -> dict[str, Any]:
+        header = ccnb_format_header(ccnb_format)
+        if header is None:
+            return self.get_json('/api/v1/annotated/books/')
+        return self.fetch_json(self.url('/api/v1/annotated/books/'), headers={'Accept': 'application/json', 'CCNB-Format': header})
+
+    def annotated_notebook_file(self, book_slug: str, *, ccnb_format=None) -> bytes:
+        """Exact package bytes; use the same ccnb_format as annotated_books for matching revisions."""
+        slug = public_slug_segment(book_slug, 'book slug')
+        header = ccnb_format_header(ccnb_format)
+        try:
+            origin = urlsplit(self.base_url)
+            valid = (origin.scheme in ('https', 'http') and origin.hostname and not origin.username
+                     and not origin.password and not origin.query and not origin.fragment
+                     and (origin.port is None or 1 <= origin.port <= 65535))
+        except ValueError as exc:
+            raise ApiError('Use an HTTP(S) API origin.', code='invalid_options') from exc
+        if not valid:
+            raise ApiError('Use an HTTP(S) API origin.', code='invalid_options')
+        headers = {'Accept': 'application/vnd.classicchess.notebook'}
+        if header is not None:
+            headers['CCNB-Format'] = header
+        body, media_type = self.fetch_url(urljoin(self.base_url, f'/annotated/{slug}/download/'), headers=headers, follow_redirects=False)
+        if not media_type.startswith('application/vnd.classicchess.notebook'):
+            raise ApiError('Response was not a Notebook file.', code='invalid_response')
+        return body
 
     def annotated_games(
         self,

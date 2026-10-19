@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import unittest
+from http.server import BaseHTTPRequestHandler
+from http.server import ThreadingHTTPServer
 from io import BytesIO
+from threading import Thread
 from unittest.mock import Mock
 from unittest.mock import patch
 from urllib.error import HTTPError
@@ -15,6 +18,59 @@ from classicchess_api.origin_policy import require_credentialed_url
 
 
 class PlayerDiscoveryClientTests(unittest.TestCase):
+    def test_annotated_package_does_not_follow_redirects_or_send_account_credentials(self):
+        received = []
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                received.append((self.path, self.headers.get('Authorization'), self.headers.get('Cookie'), self.headers.get('CCNB-Format')))
+                self.send_response(302)
+                self.send_header('Location', '/annotated/other/download/')
+                self.end_headers()
+
+            def log_message(self, *args):
+                pass
+
+        with ThreadingHTTPServer(('127.0.0.1', 0), Handler) as server:
+            thread = Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                client = ClassicChessClient(f'http://127.0.0.1:{server.server_port}', api_token='fixture')
+                with self.assertRaises(ApiError) as caught:
+                    client.annotated_notebook_file('my-system', ccnb_format=3)
+                self.assertEqual(caught.exception.status_code, 302)
+                self.assertEqual(received, [('/annotated/my-system/download/', None, None, '3')])
+            finally:
+                server.shutdown()
+                thread.join()
+
+    def test_annotated_catalog_and_fixed_package_negotiate_matching_formats(self):
+        client = ClassicChessClient()
+        for value in (None, 2, 3):
+            with self.subTest(value=value), patch.object(client, 'fetch_url', side_effect=[(b'{"results":[]}', 'application/json'), (b'CCNB\0\3\xff', 'application/vnd.classicchess.notebook')]) as wire:
+                self.assertEqual(client.annotated_books(ccnb_format=value), {'results': []})
+                self.assertEqual(client.annotated_notebook_file('my-system', ccnb_format=value), b'CCNB\0\3\xff')
+                self.assertEqual([call.args[0] for call in wire.call_args_list], ['https://classicchess.com/api/v1/annotated/books/', 'https://classicchess.com/annotated/my-system/download/'])
+                for call in wire.call_args_list:
+                    headers = call.kwargs.get('headers', {})
+                    self.assertEqual(headers.get('CCNB-Format'), None if value is None else str(value))
+                    self.assertNotIn('Authorization', headers)
+                    self.assertNotIn('Cookie', headers)
+                self.assertFalse(wire.call_args.kwargs['follow_redirects'])
+
+    def test_annotated_ccnb_invalid_formats_and_paths_fail_before_io(self):
+        client = ClassicChessClient()
+        with patch.object(client, 'fetch_url') as wire:
+            for value in (1, 4, '3', True, 3.0):
+                with self.subTest(value=value), self.assertRaises(ApiError):
+                    client.annotated_books(ccnb_format=value)
+                with self.subTest(value=value), self.assertRaises(ApiError):
+                    client.annotated_notebook_file('my-system', ccnb_format=value)
+            for slug in ('../book', 'https://elsewhere.test/book', 'book?format=3', 'book/download'):
+                with self.subTest(slug=slug), self.assertRaises(ApiError):
+                    client.annotated_notebook_file(slug)
+            wire.assert_not_called()
+
     def test_player_resources_request_the_exact_public_resource(self):
         client = ClassicChessClient()
         for method, suffix in (('public_player', ''), ('public_player_bio', 'bio/'), ('public_notable_games', 'notable-games/')):

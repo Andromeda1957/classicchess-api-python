@@ -163,7 +163,7 @@ def command_public_games(args: argparse.Namespace) -> int:
 
 
 def write_games_payload(args: argparse.Namespace, payload: dict[str, Any]) -> int:
-    if args.limit and not args.all_pages:
+    if args.limit is not None and not args.all_pages:
         payload["results"] = payload.get("results", [])[: args.limit]
 
     if args.pgn:
@@ -306,6 +306,13 @@ def command_annotated_pgn(args: argparse.Namespace) -> int:
     return 0
 
 
+def nonnegative_limit(value: str) -> int:
+    limit = int(value)
+    if limit < 0:
+        raise argparse.ArgumentTypeError("Limit must be nonnegative.")
+    return limit
+
+
 def add_games_args(parser: argparse.ArgumentParser, *, public: bool = False) -> None:
     parser.add_argument("-q", "--query", help="Raw game-search query.")
     parser.add_argument("--player", help="Player name query.")
@@ -348,7 +355,7 @@ def add_games_args(parser: argparse.ArgumentParser, *, public: bool = False) -> 
         help="Results per page, max 100 on the API. Default: 50.",
     )
     parser.add_argument("--all-pages", action="store_true", help="Fetch all pages.")
-    parser.add_argument("--limit", type=int, help="Limit returned/fetched results.")
+    parser.add_argument("--limit", type=nonnegative_limit, help="Limit returned/fetched results.")
     parser.add_argument("--pgn", action="store_true", help="Fetch PGN for results.")
     parser.add_argument("--output", help="Write PGN output to this file.")
 

@@ -217,6 +217,30 @@ OK_BODY = json.dumps({'ok': True}).encode()
 
 
 class SiteGapRequestTests(TestCase):
+    def test_ccnb_format_negotiates_get_and_password_post(self):
+        api = ApplicationClient()
+        for ccnb_format in (None, 2, 3):
+            for password in (None, 'test-only-password'):
+                with self.subTest(ccnb_format=ccnb_format, encrypted=password is not None), patch('classicchess_api.application.build_opener') as opener:
+                    opener.return_value.open.return_value = file_reply(b'CCNB\0\3\xff', 'application/vnd.classicchess.notebook', 'n.ccnb')
+                    result = api.account_notebook_file(NOTEBOOK, 't', password=password, ccnb_format=ccnb_format)
+                    request = opener.return_value.open.call_args.args[0]
+                    self.assertEqual(result.content, b'CCNB\0\3\xff')
+                    self.assertEqual(request.get_header('Ccnb-format'), None if ccnb_format is None else str(ccnb_format))
+                    self.assertEqual(request.get_method(), 'GET' if password is None else 'POST')
+                    self.assertEqual(request.get_header('Authorization'), 'Bearer t')
+                    self.assertEqual(request.full_url, 'https://classicchess.com/api/v1/account/notebooks/' + NOTEBOOK + '/file/')
+
+    def test_invalid_ccnb_format_or_unrelated_path_never_reaches_io(self):
+        api = ApplicationClient()
+        with patch('classicchess_api.application.build_opener') as opener:
+            for value in (1, 4, '3', True, 3.0):
+                with self.subTest(value=value), self.assertRaises(ApiError):
+                    api.account_notebook_file(NOTEBOOK, 't', ccnb_format=value)
+            with self.assertRaises(ApiError):
+                api.download('/api/v1/account/me/', token='t', ccnb_format=3)
+            opener.assert_not_called()
+
     def assert_request(self, call, method, path, body):
         with patch('classicchess_api.application.build_opener') as opener:
             opener.return_value.open.return_value = Reply(OK_BODY)

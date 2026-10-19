@@ -15,6 +15,7 @@ from uuid import uuid4
 
 from .client import DEFAULT_BASE_URL
 from .client import USER_AGENT
+from .client import ccnb_format_header
 from .client import public_slug_segment
 from .client import public_username_segment
 from .response import DEFAULT_MAX_RESPONSE_BYTES
@@ -174,17 +175,17 @@ class ApplicationClient:
         return ApplicationResponse(status, decode_json_object(data or b'{}'), headers.get('Retry-After'))
 
     def download(self, path: str, *, method='GET', body=None, content_type='application/json; charset=utf-8',
-                 token=None, timeout=None, accept='*/*') -> ApplicationDownload:
+                 token=None, timeout=None, accept='*/*', ccnb_format=None) -> ApplicationDownload:
         """Fetch a file. The bytes are returned only for a 2xx; otherwise ``error`` holds the JSON reply."""
         status, data, headers = self._exchange(path, method=method, body=body, content_type=content_type,
-                                               token=token, timeout=timeout, accept=accept)
+                                               token=token, timeout=timeout, accept=accept, ccnb_format=ccnb_format)
         ok = 200 <= status < 300
         error = {} if ok else decode_json_object(data or b'{}')
         return ApplicationDownload(status, data if ok else b'', headers.get('Content-Type', ''),
                                    _filename(headers.get('Content-Disposition')) if ok else None,
                                    headers.get('Retry-After'), error)
 
-    def _exchange(self, path, *, method, body, content_type, token, timeout, accept):
+    def _exchange(self, path, *, method, body, content_type, token, timeout, accept, ccnb_format=None):
         if (not isinstance(path, str) or len(path) > 8192 or re.search(r'[\\#\x00-\x20\x7f]', path)
                 or re.search(r'%|/\.{1,2}(?:/|$)', path.split('?')[0])
                 or not path.startswith(('/api/v1/', '/cast/api/mobile/'))):
@@ -207,6 +208,13 @@ class ApplicationClient:
         if body is not None and len(body) > 128 * 1024 * 1024:
             raise ApiError('API request exceeds 128 MiB.', code='request_too_large')
         headers = {'Accept': accept, 'User-Agent': self.user_agent}
+        format_header = ccnb_format_header(ccnb_format)
+        if format_header is not None:
+            notebook = re.fullmatch(r'/api/v1/account/notebooks/([^/]+)/file/', path)
+            if notebook is None:
+                raise ApiError('CCNB negotiation requires the fixed Notebook file endpoint.', code='invalid_request')
+            _notebook_uuid(notebook[1])
+            headers['CCNB-Format'] = format_header
         if token is not None:
             headers['Authorization'] = f'Bearer {token}'
         if body is not None:
@@ -359,16 +367,16 @@ class ApplicationClient:
         path = '/api/v1/account/notebooks/' + _notebook_uuid(notebook_uuid) + '/chapters/' + chapter + '/pgn/'
         return self.download(path, token=token, accept='application/x-chess-pgn')
 
-    def account_notebook_file(self, notebook_uuid: str, token: str, *, password=None) -> ApplicationDownload:
+    def account_notebook_file(self, notebook_uuid: str, token: str, *, password=None, ccnb_format=None) -> ApplicationDownload:
         """The whole Notebook as .ccnb bytes; a password (members only) encrypts it."""
         path = '/api/v1/account/notebooks/' + _notebook_uuid(notebook_uuid) + '/file/'
         accept = 'application/vnd.classicchess.notebook'
         if password is None:
-            return self.download(path, token=token, accept=accept)
+            return self.download(path, token=token, accept=accept, ccnb_format=ccnb_format)
         if not isinstance(password, str) or not password:
             raise ApiError('Use a non-empty password.', code='invalid_request')
         return self.download(path, method='POST', body=json.dumps({'password': password}),
-                             token=token, accept=accept)
+                             token=token, accept=accept, ccnb_format=ccnb_format)
 
     # The Gym: play the site's bots. Personal tokens need gym:read to read and
     # gym:play for the rest; device sessions pass both.

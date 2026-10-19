@@ -125,6 +125,38 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiError'
+  /api/v1/public/players/cards/:
+    get:
+      summary: List every curated player as a compact card for player lists
+      description: 'The same players, order, filters and links as listCuratedPlayers, with only the approved biography''s headline (epithet, lifespan, crown) instead of its full text: about a twelfth of the bytes. Follow urls.api_bio or urls.api_detail for the biography when a player is opened.'
+      operationId: listCuratedPlayerCards
+      tags:
+      - Curated players
+      parameters:
+      - name: q
+        in: query
+        schema:
+          maxLength: 80
+          type: string
+      - name: bucket
+        in: query
+        description: Archive era key returned in archive_buckets. An unknown key selects all eras.
+        schema:
+          maxLength: 40
+          type: string
+      responses:
+        '200':
+          description: Complete public player catalog as compact cards.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicPlayerCards'
+        '400':
+          description: Query exceeds its bounds or requests an unsupported format.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
   /api/v1/public/players/{player_slug}/:
     get:
       summary: Get one curated player profile, approved biography, portrait and links
@@ -458,6 +490,20 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PublicEventOfTheDay'
+  /api/v1/public/todays-picks/:
+    get:
+      summary: Get today's homepage picks
+      description: 'Every face of today''s homepage card, in its order: Player of the day, Game of the Day, On this day and Event of the day, each with the portrait the card shows. They come from one daily chain in which a later pick skips a player an earlier one already pictures, so they always match the homepage. Each face is null when the homepage omits it.'
+      operationId: getTodaysPicks
+      tags:
+      - Curated games
+      responses:
+        '200':
+          description: The site date and today's homepage picks.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicTodaysPicks'
   /api/v1/public/search/:
     get:
       summary: Search the curated archive like the site search box
@@ -1669,6 +1715,62 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ExplorerError'
+  /api/v1/opening-explorer/lichess/games/{game_id}/:
+    get:
+      summary: Load a public Lichess game for the Opening Explorer
+      description: Returns a validated PGN and game title without creating an account import. Only an eight-character game ID is accepted; the provider host is fixed. Clients at one address share 12 requests per 15 minutes, and game loading shares the existing remote-import concurrency pool.
+      operationId: getLichessOpeningExplorerGame
+      tags:
+      - Analysis
+      security: []
+      parameters:
+      - name: game_id
+        in: path
+        required: true
+        description: An exact public Lichess game ID.
+        schema:
+          pattern: ^[A-Za-z0-9]{8}$
+          type: string
+      responses:
+        '200':
+          description: A validated public game and title.
+          content:
+            application/json:
+              schema:
+                description: One validated public Lichess game for a transient Notebook editor tab.
+                properties:
+                  title:
+                    type: string
+                  pgn:
+                    type: string
+                required:
+                - title
+                - pgn
+                type: object
+        '400':
+          description: The game ID is invalid or query parameters were supplied.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '404':
+          description: The game was not found or is not public.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '429':
+          description: Client budget or shared import capacity exhausted; honor Retry-After.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '503':
+          description: Provider unavailable, invalid PGN or admission unavailable; honor Retry-After when present.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
   /api/v1/stats/:
     get:
       summary: Player statistics
@@ -2067,10 +2169,16 @@ paths:
   /api/v1/annotated/books/:
     get:
       summary: List every annotated book, with source metadata and download links
+      description: 'CCNB-Format: 3 selects representation-specific binary package revisions; no format choice defaults to legacy format 2 revisions. The catalog and downloadable package respond with CCNB-Format and Vary: CCNB-Format. Unsupported values return ccnb_format_unsupported. The ccnb_format=2 or 3 URL query is equivalent; header and query must agree. Use the same choice for package downloads.'
       operationId: listAnnotatedBooks
       tags:
       - Annotated books
       parameters:
+      - name: ccnb_format
+        in: query
+        description: Exact 2 or 3, equivalent to CCNB-Format; absent both defaults to 2. Repeated values or header disagreement are rejected.
+        schema:
+          type: string
       - name: format
         in: query
         description: JSON metadata by default; txt returns only the complete list of names or titles.
@@ -2107,6 +2215,11 @@ paths:
         required: true
         schema:
           maxLength: 128
+          type: string
+      - name: ccnb_format
+        in: query
+        description: Exact 2 or 3, equivalent to CCNB-Format; absent both defaults to 2. Repeated values or header disagreement are rejected.
+        schema:
           type: string
       - name: page
         in: query
@@ -3261,7 +3374,7 @@ paths:
   /api/v1/account/notebooks/{notebook_uuid}/file/:
     get:
       summary: Download the whole Notebook as a .ccnb file
-      description: Members may always export. Other accounts may export only when the owner allowed public exports.
+      description: 'Members may always export. Other accounts may export only when the owner allowed public exports. Send CCNB-Format: 3 for the binary record container. Browser URLs may instead send ccnb_format=2 or 3; no format choice defaults to legacy format 2. Invalid or conflicting choices return ccnb_format_unsupported. Responses identify CCNB-Format and Vary on it, with representation-specific ETags. Capabilities that cannot be represented losslessly in format 2 are refused.'
       operationId: downloadAccountNotebook
       security:
       - AccountApiToken: *id001
@@ -3273,6 +3386,11 @@ paths:
         schema:
           type: string
           format: uuid
+      - name: ccnb_format
+        in: query
+        description: Exact 2 or 3, equivalent to CCNB-Format; absent both defaults to 2. Repeated values or header disagreement are rejected.
+        schema:
+          type: string
       responses:
         '200':
           description: Unencrypted Classic Chess Notebook file.
@@ -3281,6 +3399,12 @@ paths:
               schema:
                 type: string
                 format: binary
+        '400':
+          description: Unsupported CCNB-Format or content cannot be represented losslessly.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
         '401':
           description: Missing, invalid, expired or revoked bearer token. Browser cookie sessions are not accepted.
           content:
@@ -3303,7 +3427,7 @@ paths:
       - notebooks:read
     post:
       summary: Download the Notebook as a password-protected .ccnb file
-      description: Members only. The password encrypts this one file and is not stored.
+      description: 'Members only. The password encrypts this one file and is not stored. CCNB-Format: 3 negotiates authenticated binary blocks. The form URL may instead send ccnb_format=2 or 3; no choice defaults to legacy AES-GCM. Invalid or conflicting values return ccnb_format_unsupported. The response includes CCNB-Format, Vary: CCNB-Format and a representation-specific ETag.'
       operationId: downloadEncryptedAccountNotebook
       security:
       - AccountApiToken: *id001
@@ -3315,6 +3439,11 @@ paths:
         schema:
           type: string
           format: uuid
+      - name: ccnb_format
+        in: query
+        description: Exact 2 or 3, equivalent to CCNB-Format; absent both defaults to 2. Repeated values or header disagreement are rejected.
+        schema:
+          type: string
       requestBody:
         required: true
         content:
@@ -5691,6 +5820,33 @@ components:
           - license_url
           - width
           - height
+        player:
+          additionalProperties: false
+          description: 'The archive player to picture beside the entry: its game''s archive player, else its first related player with a public page; absent when none has a portrait.'
+          properties:
+            name:
+              type: string
+            slug:
+              type: string
+            portrait:
+              properties:
+                image:
+                  type: string
+                thumbnail:
+                  type: string
+              type: object
+            urls:
+              allOf:
+              - $ref: '#/components/schemas/ResourceLinks'
+              - required:
+                - api_detail
+                - html_about
+          required:
+          - name
+          - slug
+          - portrait
+          - urls
+          type: object
       required:
       - id
       - category
@@ -5831,6 +5987,32 @@ components:
         results:
           items:
             $ref: '#/components/schemas/MasterGame'
+          type: array
+        player_choices:
+          description: Selectable identities when a player name is ambiguous.
+          items:
+            properties:
+              name:
+                type: string
+              search_name:
+                type: string
+            required:
+            - name
+            - search_name
+            type: object
+          type: array
+        player_suggestions:
+          description: Full player names for spelling help when the query resolves to one player; search_name preserves any year constraint and game results remain available.
+          items:
+            properties:
+              name:
+                type: string
+              search_name:
+                type: string
+            required:
+            - name
+            - search_name
+            type: object
           type: array
       required:
       - query
@@ -6651,6 +6833,113 @@ components:
       - count
       - results
       type: object
+    PublicPlayerCardBiography:
+      description: The approved biography's headline; the full text is at the player's urls.api_bio.
+      properties:
+        epithet:
+          type: string
+        lifespan:
+          type: string
+        crown:
+          type: string
+      required:
+      - epithet
+      - lifespan
+      - crown
+      type:
+      - object
+      - 'null'
+    PublicPlayerCard:
+      allOf:
+      - $ref: '#/components/schemas/PlayerIdentity'
+      - properties:
+          archive_bucket:
+            properties:
+              key:
+                type: string
+              label:
+                type: string
+            type: object
+          game_count:
+            minimum: 1
+            type: integer
+          archive_years:
+            description: Game year span; not the player's lifespan.
+            type: string
+          bookmarked:
+            description: Caller-specific bookmark state; false for anonymous requests.
+            type: boolean
+          portrait:
+            properties:
+              image:
+                type: string
+              thumbnail:
+                type: string
+            type: object
+          bio:
+            $ref: '#/components/schemas/PublicPlayerCardBiography'
+          urls:
+            allOf:
+            - $ref: '#/components/schemas/ResourceLinks'
+            - required:
+              - api_detail
+              - api_bio
+              - api_notable_games
+              - api_games
+              - api_pgn
+              - html_games
+              - html_about
+        required:
+        - archive_bucket
+        - game_count
+        - archive_years
+        - bookmarked
+        - portrait
+        - bio
+        - urls
+        type: object
+    PublicPlayerCards:
+      properties:
+        source:
+          const: public
+        query:
+          type: string
+        active_bucket:
+          type: string
+        archive_buckets:
+          items:
+            properties:
+              key:
+                type: string
+              label:
+                type: string
+              count:
+                minimum: 0
+                type: integer
+              active:
+                type: boolean
+            required:
+            - key
+            - label
+            - count
+            - active
+            type: object
+          type: array
+        count:
+          minimum: 0
+          type: integer
+        results:
+          items:
+            $ref: '#/components/schemas/PublicPlayerCard'
+          type: array
+      required:
+      - source
+      - query
+      - active_bucket
+      - archive_buckets
+      - count
+      - results
+      type: object
     PublicPlayerDetail:
       properties:
         source:
@@ -6673,6 +6962,15 @@ components:
       - source
       - player
       - bio
+      type: object
+    GamePlayerPortraits:
+      properties:
+        white:
+          description: Absolute URL of White's card portrait.
+          type: string
+        black:
+          description: Absolute URL of Black's card portrait.
+          type: string
       type: object
     PublicGame:
       properties:
@@ -6793,6 +7091,9 @@ components:
             - url
             type: object
           type: array
+        portraits:
+          $ref: '#/components/schemas/GamePlayerPortraits'
+          description: 'Detail answers only: card portraits of the archive players this game names. A side without a known portrait is omitted; an empty object means neither has one, so no player search is needed.'
       required:
       - token
       - player
@@ -8432,6 +8733,14 @@ components:
           anyOf:
           - $ref: '#/components/schemas/PublicGameSummary'
           - type: 'null'
+        portrait:
+          properties:
+            image:
+              type: string
+            thumbnail:
+              type: string
+          type: object
+          description: Portrait of game.player, the archive player the homepage pictures beside today's game; absent when there is no game or that player has no portrait.
       required:
       - source
       - date
@@ -8499,6 +8808,119 @@ components:
       required:
       - source
       - date
+      - event
+      type: object
+    PlayerOfTheDay:
+      allOf:
+      - $ref: '#/components/schemas/PlayerIdentity'
+      - properties:
+          title:
+            description: Plain-text title the player is known by; may be empty.
+            type: string
+          life_years:
+            description: Life years such as '1892–1964' or 'born 1975'; may be empty.
+            type: string
+          portrait:
+            properties:
+              image:
+                type: string
+              thumbnail:
+                type: string
+            type: object
+          urls:
+            allOf:
+            - $ref: '#/components/schemas/ResourceLinks'
+            - required:
+              - api_detail
+              - html_about
+        required:
+        - title
+        - life_years
+        - portrait
+        - urls
+        type: object
+      description: 'The homepage''s Player of the day: an approved biography with a portrait.'
+    TodaysGame:
+      allOf:
+      - $ref: '#/components/schemas/PublicGameSummary'
+      - properties:
+          portrait:
+            properties:
+              image:
+                type: string
+              thumbnail:
+                type: string
+            type: object
+            description: Portrait of the game's archive player; absent when that player has none.
+        type: object
+      description: Today's Game of the Day as the homepage card shows it.
+    OnThisDayPick:
+      description: 'The homepage card''s anniversary: a past game played on this date.'
+      properties:
+        first:
+          description: 'Surname leading the headline: the winner, else White.'
+          type: string
+        verb:
+          enum:
+          - beat
+          - drew with
+          - vs
+          type: string
+        second:
+          type: string
+        year:
+          type: integer
+        event:
+          description: Event label without the year; may be empty.
+          type: string
+        game:
+          $ref: '#/components/schemas/PublicGameSummary'
+        portrait:
+          properties:
+            image:
+              type: string
+            thumbnail:
+              type: string
+          type: object
+          description: Portrait of the game's archive player; absent when that player has none.
+      required:
+      - first
+      - verb
+      - second
+      - year
+      - event
+      - game
+      type: object
+    PublicTodaysPicks:
+      description: The homepage card's faces in its order; each is null when the homepage omits it.
+      properties:
+        source:
+          const: public
+        date:
+          format: date
+          type: string
+        player:
+          anyOf:
+          - $ref: '#/components/schemas/PlayerOfTheDay'
+          - type: 'null'
+        game:
+          anyOf:
+          - $ref: '#/components/schemas/TodaysGame'
+          - type: 'null'
+        on_this_day:
+          anyOf:
+          - $ref: '#/components/schemas/OnThisDayPick'
+          - type: 'null'
+        event:
+          anyOf:
+          - $ref: '#/components/schemas/EventOfTheDay'
+          - type: 'null'
+      required:
+      - source
+      - date
+      - player
+      - game
+      - on_this_day
       - event
       type: object
     PublicBeginnerGames:
@@ -10111,12 +10533,17 @@ components:
         summary:
           properties:
             players:
+              description: Players in the curated players catalog.
               minimum: 0
               type: integer
             public_games:
               minimum: 0
               type: integer
             annotated_books:
+              minimum: 0
+              type: integer
+            event_series:
+              description: Series cards on the event-series catalog; absent from older servers.
               minimum: 0
               type: integer
           required:
