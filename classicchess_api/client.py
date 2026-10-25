@@ -34,6 +34,28 @@ LICHESS_EXPLORER_COLORS = ("both", "white", "black")
 LICHESS_EXPLORER_RESULTS = ("all", "win", "loss", "draw")
 
 
+def _collection_identifier(value):
+    if type(value) is not int or not 1 <= value <= 2147483647:
+        raise ApiError('Use a positive collection ID.', code='invalid_request')
+    return value
+
+
+def _collection_name_query(name):
+    if not isinstance(name, str) or not 1 <= len(name.strip()) <= 120:
+        raise ApiError('Use a collection name of 1–120 characters.', code='invalid_request')
+    return urlencode({'name': name.strip()})
+
+
+def _curated_collection_payload(collection_id, filters, exclude, batch_size, after_game_id, dry_run):
+    if type(batch_size) is not int or not 1 <= batch_size <= 1000:
+        raise ApiError('Use a batch size from 1 to 1000.', code='invalid_request')
+    if type(after_game_id) is not int or not 0 <= after_game_id <= 2147483647 or type(dry_run) is not bool:
+        raise ApiError('Use a nonnegative game ID and a boolean dry_run.', code='invalid_request')
+    return {'source': 'curated_games', 'collection_id': _collection_identifier(collection_id),
+            'filters': filters, 'exclude': [] if exclude is None else exclude, 'batch_size': batch_size,
+            'after_game_id': after_game_id, 'dry_run': dry_run}
+
+
 def ccnb_format_header(value):
     if value is None:
         return None
@@ -500,6 +522,26 @@ class ClassicChessClient:
             {"name": name},
             api_token=api_token,
         )
+
+    def account_find_collection(self, name: str, *, api_token: str | None = None) -> dict[str, Any]:
+        """Return count/results for the exact name, ignoring case; empty when absent."""
+        return self.request_json('GET', '/api/v1/account/collections/?' + _collection_name_query(name), api_token=api_token)
+
+    def account_delete_collection(self, collection_id: int, *, api_token: str | None = None) -> dict[str, Any]:
+        """Delete an owned collection, memberships, notes and progress; keep underlying games."""
+        return self.request_json('DELETE', f'/api/v1/account/collections/{_collection_identifier(collection_id)}/', api_token=api_token)
+
+    def account_add_curated_games(self, collection_id: int, filters: list[dict[str, Any]], *,
+                                 exclude: list[dict[str, Any]] | None = None, batch_size: int = 1000,
+                                 after_game_id: int = 0, dry_run: bool = False,
+                                 api_token: str | None = None) -> dict[str, Any]:
+        """Add one curated-only batch. Repeat with next_after_game_id while has_more is true.
+
+        Criteria within each group are AND; groups are OR; exclude subtracts groups.
+        Keep filters unchanged between calls. Dry runs make no changes. No automatic retries.
+        """
+        payload = _curated_collection_payload(collection_id, filters, exclude, batch_size, after_game_id, dry_run)
+        return self.request_json('POST', '/api/v1/account/collections/import/', payload, api_token=api_token)
 
     def account_import_public_player_games(
         self,

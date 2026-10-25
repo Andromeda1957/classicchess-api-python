@@ -1568,6 +1568,20 @@ paths:
         schema:
           minimum: 1
           type: integer
+      - name: since
+        in: query
+        description: Include only games from this year or later. Games with an unknown year are left out of any year range.
+        schema:
+          maximum: 9999
+          minimum: 1400
+          type: integer
+      - name: until
+        in: query
+        description: Include only games from this year or earlier; not before since.
+        schema:
+          maximum: 9999
+          minimum: 1400
+          type: integer
       responses:
         '200':
           description: Player resolution or paginated position matches. No HTML or pager fragments.
@@ -1582,7 +1596,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/PlayerOpeningExplorerPending'
         '400':
-          description: player is too long, or page is not a positive integer.
+          description: player is too long, page is not a positive integer, or since or until is not a year from 1400 to 9999 or since is later than until.
           content:
             application/json:
               schema:
@@ -1690,6 +1704,20 @@ paths:
           - loss
           - draw
           type: string
+      - name: since
+        in: query
+        description: Include only games from January of this year or later.
+        schema:
+          maximum: 9999
+          minimum: 1400
+          type: integer
+      - name: until
+        in: query
+        description: Include only games from December of this year or earlier; not before since.
+        schema:
+          maximum: 9999
+          minimum: 1400
+          type: integer
       responses:
         '200':
           description: Position count, next moves, sample Lichess games, the named opening, partial and sample_label.
@@ -1698,7 +1726,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/LichessOpeningExplorer'
         '400':
-          description: The FEN, username, color or result is invalid, or a result filter was sent without player.
+          description: The FEN, username, color, result or year range is invalid, or a result filter was sent without player.
           content:
             application/json:
               schema:
@@ -1826,6 +1854,32 @@ paths:
       summary: Search MasterDB games
       operationId: searchMasterGames
       parameters:
+      - name: player
+        in: query
+        description: Resolved MasterDB player identity.
+        schema:
+          maxLength: 80
+          type: string
+      - name: side
+        in: query
+        schema:
+          default: either
+          enum:
+          - either
+          - white
+          - black
+          type: string
+      - name: result
+        in: query
+        description: Result from the named player's side. Side/result require player.
+        schema:
+          default: any
+          enum:
+          - any
+          - win
+          - draw
+          - loss
+          type: string
       - name: q
         in: query
         required: true
@@ -1873,6 +1927,32 @@ paths:
       summary: Export MasterDB games
       operationId: exportMasterGames
       parameters:
+      - name: player
+        in: query
+        description: Resolved MasterDB player identity.
+        schema:
+          maxLength: 80
+          type: string
+      - name: side
+        in: query
+        schema:
+          default: either
+          enum:
+          - either
+          - white
+          - black
+          type: string
+      - name: result
+        in: query
+        description: Result from the named player's side. Side/result require player.
+        schema:
+          default: any
+          enum:
+          - any
+          - win
+          - draw
+          - loss
+          type: string
       - name: q
         in: query
         schema:
@@ -1949,6 +2029,32 @@ paths:
       summary: Export MasterDB games by token body
       operationId: exportMasterGamesByToken
       parameters:
+      - name: player
+        in: query
+        description: Resolved MasterDB player identity.
+        schema:
+          maxLength: 80
+          type: string
+      - name: side
+        in: query
+        schema:
+          default: either
+          enum:
+          - either
+          - white
+          - black
+          type: string
+      - name: result
+        in: query
+        description: Result from the named player's side. Side/result require player.
+        schema:
+          default: any
+          enum:
+          - any
+          - win
+          - draw
+          - loss
+          type: string
       - name: q
         in: query
         schema:
@@ -3034,6 +3140,60 @@ paths:
                 $ref: '#/components/schemas/ApiError'
       x-required-scopes:
       - gym:play
+  /api/v1/account/puzzles/batch/:
+    get:
+      summary: Download a bounded offline puzzle batch
+      description: Up to 100 distinct puzzles from the rotation, or current misses with result=missed. Store account_id and generation with the batch. Each puzzle has its exact revision. Offline packs use the puzzle source facts without a remote source-game lookup. Downloads are limited to 30 per account per hour.
+      operationId: getPuzzleBatch
+      security:
+      - AccountApiToken: *id001
+      - MobileSessionToken: *id002
+      parameters:
+      - name: limit
+        in: query
+        schema:
+          default: 25
+          maximum: 100
+          minimum: 1
+          type: integer
+      - name: result
+        in: query
+        schema:
+          pattern: ^missed$
+          type: string
+      responses:
+        '200':
+          description: The account, reset version and playable puzzles.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PuzzleBatch'
+        '400':
+          description: invalid_limit or invalid_result_filter.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          description: Missing, invalid, expired or revoked bearer token. Browser cookie sessions are not accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '403':
+          description: Personal API token is missing the puzzles:read scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '429':
+          description: 'rate_limited: too many downloads.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+      x-required-scopes:
+      - puzzles:read
   /api/v1/account/puzzles/:
     get:
       summary: The account's puzzle figures
@@ -3072,6 +3232,12 @@ paths:
       - AccountApiToken: *id001
       - MobileSessionToken: *id002
       parameters:
+      - name: result
+        in: query
+        description: Only current misses; omit for the full rotation.
+        schema:
+          pattern: ^missed$
+          type: string
       - name: after
         in: query
         description: The puzzle just played, so another one comes next when the rotation has one.
@@ -3086,7 +3252,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Puzzle'
         '400':
-          description: 'invalid_puzzle_id: after is not a puzzle id.'
+          description: invalid_puzzle_id or invalid_result_filter.
           content:
             application/json:
               schema:
@@ -3104,7 +3270,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ApiError'
         '404':
-          description: 'rotation_empty: every puzzle is solved on the first try. Reset puzzles to play them again.'
+          description: 'review_empty: no current misses remain; or rotation_empty: every puzzle is solved on the first try. Reset puzzles to play them again.'
           content:
             application/json:
               schema:
@@ -3120,6 +3286,12 @@ paths:
       - AccountApiToken: *id001
       - MobileSessionToken: *id002
       parameters:
+      - name: result
+        in: query
+        description: Only current incorrect results since Reset puzzles.
+        schema:
+          pattern: ^missed$
+          type: string
       - name: page
         in: query
         schema:
@@ -3141,7 +3313,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/PuzzleHistoryPage'
         '400':
-          description: invalid_pagination.
+          description: invalid_pagination or invalid_result_filter.
           content:
             application/json:
               schema:
@@ -3234,7 +3406,7 @@ paths:
   /api/v1/account/puzzles/{public_id}/result/:
     post:
       summary: Save how one play of a puzzle went
-      description: A first-try solve stands until Reset puzzles, so the saved result can differ from the one sent.
+      description: A first-try solve stands until Reset puzzles, so the saved result can differ from the one sent. For durable offline delivery send event_id, generation and revision together. Retrying an identical event returns duplicate without changing progress. A reset or changed puzzle rejects an unsent old attempt with 409.
       operationId: recordPuzzleResult
       security:
       - AccountApiToken: *id001
@@ -3252,6 +3424,17 @@ paths:
           application/json:
             schema:
               properties:
+                event_id:
+                  description: Unique attempt UUID. Send with generation and revision for retry-safe delivery.
+                  format: uuid
+                  type: string
+                generation:
+                  maximum: 9223372036854775807
+                  minimum: 0
+                  type: integer
+                revision:
+                  pattern: ^[0-9a-f]{64}$
+                  type: string
                 result:
                   description: missed at the first wrong move or when the solution is shown; solved for a finish with no wrong move. Report each play once.
                   enum:
@@ -3269,7 +3452,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/PuzzleResultSaved'
         '400':
-          description: invalid_result or invalid_json.
+          description: invalid_result, invalid_attempt or invalid_json.
           content:
             application/json:
               schema:
@@ -3292,6 +3475,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiError'
+        '409':
+          description: 'stale_generation, stale_puzzle or event_conflict: the attempt was not applied.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
         '413':
           description: 'too_large: the body is over 1 KB.'
           content:
@@ -3300,6 +3489,94 @@ paths:
                 $ref: '#/components/schemas/ApiError'
       x-required-scopes:
       - puzzles:write
+  /api/v1/account/notebooks/annotation-search/:
+    get:
+      summary: Search annotations in the account Notebook library
+      description: Searches only owned and directly invited Notebooks, including nested variations, root comments, NAG symbols/names and diagram marks. Local-only chapters are excluded. Each request scans at most 16 chapters, 2 MB of PGN and 0.5 seconds of parser work; each chapter retains the 1 MB/10,000-node and 512-move path limits. Follow cursor even when hits is empty. Cursors expire after one hour and reject changed user or query parameters. A changed chapter being resumed returns search_changed/409; restart search. Hits carry content_version; reload and validate before using path. The chapter-ID ceiling excludes later appends, while content is read afresh. Unreadable/over-budget chapters leave complete=false, even on the last page. Private query text and scores are not logged or cached.
+      operationId: searchNotebookAnnotations
+      security:
+      - AccountApiToken: *id001
+      - MobileSessionToken: *id002
+      parameters:
+      - name: q
+        in: query
+        description: Literal case-insensitive annotation text, NAG symbol, $N or name; empty lists the selected annotation kinds.
+        schema:
+          default: ''
+          maxLength: 128
+          type: string
+      - name: kind
+        in: query
+        schema:
+          default: all
+          enum:
+          - all
+          - comments
+          - glyphs
+          - diagrams
+          type: string
+      - name: notebook_uuid
+        in: query
+        description: An owned or directly invited Notebook; absent searches that same account library.
+        schema:
+          type:
+          - string
+          - 'null'
+          format: uuid
+      - name: limit
+        in: query
+        schema:
+          default: 50
+          maximum: 100
+          minimum: 1
+          type: integer
+      - name: cursor
+        in: query
+        description: Signed user/query-bound continuation; retain q, kind, notebook_uuid and limit.
+        schema:
+          type:
+          - string
+          - 'null'
+          maxLength: 2048
+      responses:
+        '200':
+          description: Matching annotations and a bounded-scan continuation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotebookAnnotationSearchResult'
+        '400':
+          description: Operation rejected; retain the error message and do not retry writes blindly.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          description: Missing, invalid, expired or revoked bearer token. Browser cookie sessions are not accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '403':
+          description: Personal API token is missing the notebooks:read scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '404':
+          description: Operation rejected; retain the error message and do not retry writes blindly.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '409':
+          description: Operation rejected; retain the error message and do not retry writes blindly.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+      x-required-scopes:
+      - notebooks:read
   /api/v1/account/notebooks/:
     get:
       summary: Notebooks the account owns or was invited to
@@ -3841,6 +4118,14 @@ paths:
       security:
       - AccountApiToken: *id001
       - MobileSessionToken: *id002
+      parameters:
+      - name: name
+        in: query
+        description: Exact collection name, ignoring case.
+        schema:
+          maxLength: 120
+          minLength: 1
+          type: string
       responses:
         '200':
           description: Account collections with game counts, by name.
@@ -3848,6 +4133,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AccountCollections'
+        '400':
+          description: Validation error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
         '401':
           description: Missing, invalid, expired or revoked bearer token. Browser cookie sessions are not accepted.
           content:
@@ -4650,7 +4941,8 @@ paths:
       - library:read
   /api/v1/account/collections/import/:
     post:
-      summary: Import public archive player games into an account collection
+      summary: Import curated games into an account collection
+      description: Legacy public_player_games imports a player archive. curated_games combines filters, excludes Master DB and user imports, and appends at most 1000 games per call. Repeat identical selection with next_after_game_id until has_more is false. matched counts the full selection; added, already_present and processed count this batch. Retrying a batch preserves existing notes and progress. dry_run makes no changes.
       operationId: importCollectionGames
       security:
       - AccountApiToken: *id001
@@ -4660,31 +4952,182 @@ paths:
         content:
           application/json:
             schema:
-              properties:
-                source:
-                  const: public_player_games
-                name:
-                  description: Collection name to create or reuse when collection_id is omitted.
-                  maxLength: 120
-                  type: string
-                collection_id:
-                  description: Existing account collection ID.
-                  type: integer
-                archive_player:
-                  maxLength: 80
-                  type: string
-                since:
-                  maximum: 9999
-                  minimum: 1400
-                  type: integer
-                until:
-                  maximum: 9999
-                  minimum: 1400
-                  type: integer
-              required:
-              - source
-              - archive_player
-              type: object
+              anyOf:
+              - properties:
+                  source:
+                    const: public_player_games
+                  name:
+                    description: Collection name to create or reuse when collection_id is omitted.
+                    maxLength: 120
+                    type: string
+                  collection_id:
+                    description: Existing account collection ID.
+                    type: integer
+                  archive_player:
+                    maxLength: 80
+                    type: string
+                  since:
+                    maximum: 9999
+                    minimum: 1400
+                    type: integer
+                  until:
+                    maximum: 9999
+                    minimum: 1400
+                    type: integer
+                required:
+                - source
+                - archive_player
+                type: object
+              - additionalProperties: false
+                properties:
+                  source:
+                    const: curated_games
+                  collection_id:
+                    maximum: 2147483647
+                    minimum: 1
+                    type: integer
+                  filters:
+                    description: OR groups; criteria inside each nonempty group are AND. Multiple players/events within a list are OR.
+                    items:
+                      additionalProperties: false
+                      properties:
+                        players:
+                          description: Curated player slugs; either participant, including event games.
+                          items:
+                            type: string
+                          maxItems: 50
+                          minItems: 1
+                          type: array
+                        events:
+                          description: Curated event slugs.
+                          items:
+                            type: string
+                          maxItems: 50
+                          minItems: 1
+                          type: array
+                        since:
+                          maximum: 9999
+                          minimum: 1400
+                          type: integer
+                        until:
+                          maximum: 9999
+                          minimum: 1400
+                          type: integer
+                        notable:
+                          description: Curated notable games across every player, or their complement.
+                          type: boolean
+                        q:
+                          maxLength: 2000
+                          minLength: 1
+                          type: string
+                        theme:
+                          maxLength: 160
+                          minLength: 1
+                          type: string
+                        eco:
+                          maxLength: 160
+                          minLength: 1
+                          type: string
+                        result:
+                          maxLength: 160
+                          minLength: 1
+                          type: string
+                        annotation_q:
+                          maxLength: 160
+                          minLength: 1
+                          type: string
+                        annotation_author:
+                          maxLength: 160
+                          minLength: 1
+                          type: string
+                        annotation_book:
+                          maxLength: 160
+                          minLength: 1
+                          type: string
+                      type: object
+                    maxItems: 10
+                    minItems: 1
+                    type: array
+                  exclude:
+                    description: Subtract games matching any exclusion group.
+                    items:
+                      additionalProperties: false
+                      properties:
+                        players:
+                          description: Curated player slugs; either participant, including event games.
+                          items:
+                            type: string
+                          maxItems: 50
+                          minItems: 1
+                          type: array
+                        events:
+                          description: Curated event slugs.
+                          items:
+                            type: string
+                          maxItems: 50
+                          minItems: 1
+                          type: array
+                        since:
+                          maximum: 9999
+                          minimum: 1400
+                          type: integer
+                        until:
+                          maximum: 9999
+                          minimum: 1400
+                          type: integer
+                        notable:
+                          description: Curated notable games across every player, or their complement.
+                          type: boolean
+                        q:
+                          maxLength: 2000
+                          minLength: 1
+                          type: string
+                        theme:
+                          maxLength: 160
+                          minLength: 1
+                          type: string
+                        eco:
+                          maxLength: 160
+                          minLength: 1
+                          type: string
+                        result:
+                          maxLength: 160
+                          minLength: 1
+                          type: string
+                        annotation_q:
+                          maxLength: 160
+                          minLength: 1
+                          type: string
+                        annotation_author:
+                          maxLength: 160
+                          minLength: 1
+                          type: string
+                        annotation_book:
+                          maxLength: 160
+                          minLength: 1
+                          type: string
+                      type: object
+                    maxItems: 10
+                    type: array
+                  batch_size:
+                    default: 1000
+                    maximum: 1000
+                    minimum: 1
+                    type: integer
+                  after_game_id:
+                    default: 0
+                    maximum: 2147483647
+                    minimum: 0
+                    type: integer
+                  dry_run:
+                    default: false
+                    description: Return counts and continuation without adding games.
+                    type: boolean
+                required:
+                - source
+                - collection_id
+                - filters
+                type: object
       responses:
         '200':
           description: Import counts and collection metadata.
@@ -4706,6 +5149,12 @@ paths:
                 $ref: '#/components/schemas/ApiError'
         '403':
           description: Personal API token is missing the library:write scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '404':
+          description: Collection not found for this account.
           content:
             application/json:
               schema:
@@ -5040,6 +5489,15 @@ paths:
         schema:
           maxLength: 120
           type: string
+      - name: source
+        in: query
+        description: Filter all owned imports by the PGN Site header before pagination.
+        schema:
+          enum:
+          - lichess
+          - chesscom
+          - pgn
+          type: string
       - name: sort
         in: query
         description: Defaults to imported_desc, as does an unknown value.
@@ -5104,9 +5562,9 @@ paths:
               properties:
                 source:
                   enum:
-                  - pgn
                   - lichess
                   - chesscom
+                  - pgn
                   type: string
                 pgn:
                   type: string
@@ -5127,7 +5585,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/AccountImportedGame'
         '400':
-          description: Invalid import, quota, provider URL, or request body.
+          description: Invalid import, provider URL, or request body.
           content:
             application/json:
               schema:
@@ -5145,13 +5603,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/ApiError'
         '429':
-          description: Remote-import capacity is exhausted; honor Retry-After.
+          description: Import request rate or remote-import capacity is exhausted; honor Retry-After.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiError'
         '503':
-          description: Remote-import admission is temporarily unavailable; honor Retry-After.
+          description: Import admission is temporarily unavailable; honor Retry-After.
           content:
             application/json:
               schema:
@@ -5953,6 +6411,9 @@ components:
       properties:
         query:
           type: string
+        filters_applied:
+          description: True when player, side and result constraints are applied before pagination.
+          type: boolean
         count:
           description: Lower bound unless count_is_exact is true.
           type: integer
@@ -6002,7 +6463,7 @@ components:
             type: object
           type: array
         player_suggestions:
-          description: Full player names for spelling help when the query resolves to one player; search_name preserves any year constraint and game results remain available.
+          description: Full player names for spelling help when the query resolves to a player or matchup; matchups include both players, search_name preserves any year constraint, and game results remain available.
           items:
             properties:
               name:
@@ -9706,12 +10167,37 @@ components:
           type: array
         player_query:
           type: string
+        year_filter:
+          properties:
+            supported:
+              type: boolean
+            active:
+              type: boolean
+            since:
+              type:
+              - integer
+              - 'null'
+            until:
+              type:
+              - integer
+              - 'null'
+            message:
+              type: string
+          required:
+          - supported
+          - active
+          - since
+          - until
+          - message
+          type: object
+          description: The year range applied to count and results; active is false without one.
       required:
       - ok
       - player
       - candidates
       - count
       - player_query
+      - year_filter
       type: object
     PlayerOpeningExplorerPending:
       properties:
@@ -9826,6 +10312,30 @@ components:
           - name
         sample_label:
           type: string
+        year_filter:
+          properties:
+            supported:
+              type: boolean
+            active:
+              type: boolean
+            since:
+              type:
+              - integer
+              - 'null'
+            until:
+              type:
+              - integer
+              - 'null'
+            message:
+              type: string
+          required:
+          - supported
+          - active
+          - since
+          - until
+          - message
+          type: object
+          description: The year range Lichess applied to count, moves and games; active is false without one.
       required:
       - ok
       - partial
@@ -9834,6 +10344,7 @@ components:
       - games
       - opening
       - sample_label
+      - year_filter
       type: object
     AccountGame:
       properties:
@@ -10189,6 +10700,19 @@ components:
         skipped:
           minimum: 0
           type: integer
+        processed:
+          description: Games processed in this curated_games batch.
+          minimum: 0
+          type: integer
+        has_more:
+          type: boolean
+        next_after_game_id:
+          type:
+          - integer
+          - 'null'
+          description: For curated_games, pass this cursor while has_more is true.
+        dry_run:
+          type: boolean
       required:
       - ok
       - collection
@@ -10202,6 +10726,9 @@ components:
       properties:
         query:
           type: string
+        filters_applied:
+          description: True when source constraints are applied before pagination.
+          type: boolean
         sort:
           enum:
           - imported_desc
@@ -10924,6 +11451,90 @@ components:
       - sections
       - chapters
       type: object
+    NotebookAnnotationSearchLinks:
+      properties:
+        api_pgn:
+          description: Authorized PGN download for personal tokens and device sessions.
+          type: string
+        api_chapter:
+          description: Device-session chapter projection; personal tokens use api_pgn.
+          type: string
+        html:
+          type: string
+      required:
+      - api_pgn
+      - api_chapter
+      - html
+      type: object
+    NotebookAnnotationSearchHit:
+      properties:
+        notebook_uuid:
+          format: uuid
+          type: string
+        notebook_title:
+          type: string
+        chapter_id:
+          type: integer
+        chapter_uuid:
+          description: The chapter sync_uuid, shared by device clients.
+          format: uuid
+          type: string
+        title:
+          type: string
+        path:
+          description: Child indexes from root []; nested variations are included. Verify content_version when opening.
+          items:
+            type: integer
+          maxItems: 512
+          type: array
+        ply:
+          type: integer
+        snippet:
+          description: Plain text; never render as HTML.
+          maxLength: 240
+          type: string
+        kind:
+          enum:
+          - comments
+          - glyphs
+          - diagrams
+          type: string
+        content_version:
+          type: integer
+        urls:
+          $ref: '#/components/schemas/NotebookAnnotationSearchLinks'
+      required:
+      - notebook_uuid
+      - notebook_title
+      - chapter_id
+      - chapter_uuid
+      - title
+      - path
+      - ply
+      - snippet
+      - kind
+      - content_version
+      - urls
+      type: object
+    NotebookAnnotationSearchResult:
+      properties:
+        hits:
+          items:
+            $ref: '#/components/schemas/NotebookAnnotationSearchHit'
+          maxItems: 100
+          type: array
+        cursor:
+          type:
+          - string
+          - 'null'
+        complete:
+          description: True only after exhaustive scanning. A page with no hits may have a cursor; false with null cursor means malformed or over-budget chapters were skipped.
+          type: boolean
+      required:
+      - hits
+      - cursor
+      - complete
+      type: object
     GymBot:
       properties:
         key:
@@ -11018,6 +11629,12 @@ components:
           type: string
         plies:
           type: integer
+        fen:
+          description: 'The position after the last move: a finished game''s final position.'
+          type: string
+        last_move:
+          description: The last move in UCI, or empty before the first move.
+          type: string
         result:
           description: 1-0, 0-1, 1/2-1/2 or * while in play.
           type: string
@@ -11045,6 +11662,8 @@ components:
       - is_player
       - human_color
       - plies
+      - fen
+      - last_move
       - result
       - finished
       - termination
@@ -11199,6 +11818,13 @@ components:
       type: object
     PuzzleSummary:
       properties:
+        account_id:
+          description: Stable authenticated account identity for isolating downloaded puzzles.
+          type: string
+        generation:
+          description: Reset version. An offline attempt must keep the version from when it began.
+          minimum: 0
+          type: integer
         solved:
           description: Puzzles solved on the first try since the last reset; they left the rotation.
           type: integer
@@ -11267,6 +11893,10 @@ components:
       properties:
         id:
           example: p-000ccc1f
+          type: string
+        revision:
+          description: Identity of these exact puzzle data, required when syncing a downloaded attempt.
+          pattern: ^[0-9a-f]{64}$
           type: string
         heading:
           type: string
@@ -11385,8 +12015,36 @@ components:
       - game
       - urls
       type: object
+    PuzzleBatch:
+      properties:
+        account_id:
+          type: string
+        generation:
+          minimum: 0
+          type: integer
+        puzzles:
+          items:
+            $ref: '#/components/schemas/Puzzle'
+          maxItems: 100
+          type: array
+      required:
+      - account_id
+      - generation
+      - puzzles
+      type: object
     PuzzleResultSaved:
       properties:
+        status:
+          enum:
+          - saved
+          - duplicate
+          type: string
+        event_id:
+          format: uuid
+          type: string
+        generation:
+          minimum: 0
+          type: integer
         id:
           type: string
         result:

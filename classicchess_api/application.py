@@ -6,6 +6,7 @@ import re
 from dataclasses import dataclass
 from urllib.error import HTTPError
 from urllib.error import URLError
+from urllib.parse import urlencode
 from urllib.parse import urljoin
 from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler
@@ -15,6 +16,9 @@ from uuid import uuid4
 
 from .client import DEFAULT_BASE_URL
 from .client import USER_AGENT
+from .client import _collection_identifier
+from .client import _collection_name_query
+from .client import _curated_collection_payload
 from .client import ccnb_format_header
 from .client import public_slug_segment
 from .client import public_username_segment
@@ -65,6 +69,12 @@ def _page_query(page, page_size):
     if type(page) is not int or type(page_size) is not int or page < 1 or not 1 <= page_size <= 100:
         raise ApiError('Use a positive page and a page size from 1 to 100.', code='invalid_request')
     return f'page={page}&page_size={page_size}'
+
+
+def _puzzle_filter(result):
+    if result is not None and result != 'missed':
+        raise ApiError('result must be missed, or omitted for all puzzles.', code='invalid_request')
+    return '&result=missed' if result else ''
 
 
 UCI_MOVE = re.compile(r'[a-h][1-8][a-h][1-8][qrbn]?')
@@ -243,6 +253,25 @@ class ApplicationClient:
 
     def account_create_collection(self, name: str, token: str) -> ApplicationResponse:
         return self.request('/api/v1/account/collections/', method='POST', body=json.dumps({'name': name}), token=token)
+
+    def account_find_collection(self, name: str, token: str) -> ApplicationResponse:
+        """Exact name ignoring case; returns count/results (empty when absent)."""
+        return self.request('/api/v1/account/collections/?' + _collection_name_query(name), token=token)
+
+    def account_delete_collection(self, collection_id: int, token: str) -> ApplicationResponse:
+        """Delete the collection, memberships, notes and progress; keep underlying games."""
+        return self.request(f'/api/v1/account/collections/{_collection_identifier(collection_id)}/', method='DELETE', token=token)
+
+    def account_add_curated_games(self, collection_id: int, filters: list[dict], token: str, *,
+                                 exclude: list[dict] | None = None, batch_size: int = 1000,
+                                 after_game_id: int = 0, dry_run: bool = False) -> ApplicationResponse:
+        """One curated-only batch: AND criteria, OR groups, subtract exclusions.
+
+        Preview with dry_run. Keep filters and pass next_after_game_id while has_more.
+        HTTP errors retain status/data; writes are never automatically retried.
+        """
+        payload = _curated_collection_payload(collection_id, filters, exclude, batch_size, after_game_id, dry_run)
+        return self.request('/api/v1/account/collections/import/', method='POST', body=json.dumps(payload), token=token)
 
     def account_import_public_player_games(self, archive_player: str, token: str, *, name=None,
                                           collection_id=None, since=None, until=None) -> ApplicationResponse:
@@ -445,26 +474,56 @@ class ApplicationClient:
         """Your figures: first-try solves, misses, what is left in your rotation, and the total."""
         return self.request('/api/v1/account/puzzles/', token=token)
 
-    def account_puzzle_next(self, token: str, *, after=None) -> ApplicationResponse:
+    def account_puzzle_batch(self, token: str, *, limit=25, result=None) -> ApplicationResponse:
+        """Download up to 100 playable puzzles with account/reset identity for offline attempts."""
+        if type(limit) is not int or not 1 <= limit <= 100:
+            raise ApiError('Use a batch size from 1 to 100.', code='invalid_request')
+        return self.request('/api/v1/account/puzzles/batch/?limit=' + str(limit) + _puzzle_filter(result), token=token)
+
+    def account_puzzle_next(self, token: str, *, after=None, result=None) -> ApplicationResponse:
         """A random puzzle from your rotation, another than ``after`` (the one just played) when
         there is one. A 404 rotation_empty means every puzzle is solved; reset to play them again."""
-        query = '' if after is None else '?after=' + _puzzle_id(after)
+        query = '' if after is None else '&after=' + _puzzle_id(after)
+        query += _puzzle_filter(result)
+        query = '?' + query[1:] if query else ''
         return self.request('/api/v1/account/puzzles/next/' + query, token=token)
 
     def account_puzzle(self, puzzle_id: str, token: str) -> ApplicationResponse:
         return self.request('/api/v1/account/puzzles/' + _puzzle_id(puzzle_id) + '/', token=token)
 
-    def account_puzzle_result(self, puzzle_id: str, result: str, token: str) -> ApplicationResponse:
+    def account_puzzle_result(self, puzzle_id: str, result: str, token: str, *,
+                              event_id=None, generation=None, revision=None) -> ApplicationResponse:
         """Save one play: "missed" at the first wrong move or when the solution is shown, "solved"
         for a clean finish. A first-try solve stands until reset, so the saved result can differ."""
         if result not in PUZZLE_RESULTS:
             raise ApiError('result must be solved or missed.', code='invalid_request')
         path = '/api/v1/account/puzzles/' + _puzzle_id(puzzle_id) + '/result/'
-        return self.request(path, method='POST', body=json.dumps({'result': result}), token=token)
+        body = {'result': result}
+        if any(value is not None for value in (event_id, generation, revision)):
+            if (not isinstance(event_id, str) or not re.fullmatch(r'[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}', event_id)
+                    or type(generation) is not int or not 0 <= generation <= 2**53 - 1
+                    or not isinstance(revision, str) or not re.fullmatch(r'[0-9a-f]{64}', revision)):
+                raise ApiError('An offline attempt needs a UUID event_id, generation and puzzle revision.', code='invalid_request')
+            body.update(event_id=event_id, generation=generation, revision=revision)
+        return self.request(path, method='POST', body=json.dumps(body), token=token)
 
-    def account_puzzle_history(self, token: str, *, page=1, page_size=20) -> ApplicationResponse:
+    def account_puzzle_history(self, token: str, *, page=1, page_size=20, result=None) -> ApplicationResponse:
         """The puzzles you have played and how you did, most recent first."""
-        return self.request('/api/v1/account/puzzles/history/?' + _page_query(page, page_size), token=token)
+        return self.request('/api/v1/account/puzzles/history/?' + _page_query(page, page_size) + _puzzle_filter(result), token=token)
+
+    def account_notebook_annotation_search(self, token: str, *, q='', kind='all',
+                                           notebook_uuid=None, limit=50, cursor=None) -> ApplicationResponse:
+        """Search annotations in owned/directly invited Notebooks; follow cursor until null."""
+        if (not isinstance(q, str) or len(q) > 128 or kind not in ('all', 'comments', 'glyphs', 'diagrams')
+                or type(limit) is not int or not 1 <= limit <= 100
+                or cursor is not None and (not isinstance(cursor, str) or len(cursor) > 2048)):
+            raise ApiError('Use a bounded annotation query, kind and page size.', code='invalid_query')
+        params = {'q': q, 'kind': kind, 'limit': limit}
+        if notebook_uuid is not None:
+            params['notebook_uuid'] = _notebook_uuid(notebook_uuid)
+        if cursor is not None:
+            params['cursor'] = cursor
+        return self.request('/api/v1/account/notebooks/annotation-search/?' + urlencode(params), token=token)
 
     def account_puzzle_reset(self, token: str) -> ApplicationResponse:
         """Every puzzle goes back into your rotation. Your history stays."""

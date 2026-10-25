@@ -262,6 +262,70 @@ The application transport sends no cookies, follows no redirects, and accepts
 bearers only on private API paths over HTTPS or loopback development.
 There are no automatic retries. Respect `Retry-After` and avoid blindly retrying writes.
 
+## Collections and curated bulk additions
+
+These helpers require a personal token with `library:read` for
+lookup and `library:write` for creation, deletion and bulk additions.
+
+`ApplicationClient.account_create_collection(name, token)` creates an empty
+collection. `account_find_collection(name, token)` returns `count` and `results`
+for the exact name ignoring case (empty when absent). Use the returned ID.
+`account_delete_collection(id, token)` deletes that collection, including its
+memberships, notes and progress, while retaining the underlying games.
+
+`account_add_curated_games(id, filters, token, ...)` processes one batch, never
+MasterDB or user imports. Each filter group's criteria are AND; groups are OR;
+`exclude` subtracts groups. Filter keys are `players`, `events`, `since`, `until`,
+`notable`, `q`, `theme`, `eco`, `result`, `annotation_q`, `annotation_author`, and
+`annotation_book`. Players/events take lists of catalog slugs, OR within the
+list; players match either participant, including event games. Use
+`ClassicChessClient.public_players(...)` and `public_events(...)` to find slugs.
+Years are inclusive, including games with unknown months or days.
+`[{"notable": True}]` selects notable games across every curated player.
+
+For every curated game played in 1920, save this as `collections_example.py`.
+Set `CLASSICCHESS_API_TOKEN` in your private environment, then run
+`python collections_example.py`. It creates a collection and adds all batches:
+
+```python
+import os
+from classicchess_api import ApplicationClient
+
+api = ApplicationClient()
+token = os.environ["CLASSICCHESS_API_TOKEN"]
+created = api.account_create_collection("Curated games from 1920", token)
+if not created.ok:
+    raise RuntimeError(created.data)
+collection_id = created.data["id"]
+filters = [{"since": 1920, "until": 1920}]
+preview = api.account_add_curated_games(collection_id, filters, token, dry_run=True)
+if not preview.ok:
+    raise RuntimeError(preview.data)
+print("Matched:", preview.data["matched"])
+after = 0
+while True:
+    response = api.account_add_curated_games(collection_id, filters, token, after_game_id=after)
+    if not response.ok:
+        raise RuntimeError(response.data)
+    print("Added this batch:", response.data["added"])
+    if not response.data["has_more"]:
+        break
+    after = response.data["next_after_game_id"]
+```
+
+Keep filters/exclusions fixed while paging. `batch_size` is 1–1000 (default
+1000); `after_game_id` starts at 0. `matched` counts the entire live selection;
+`added`, `already_present` and `processed` count this batch. A dry run writes
+nothing; begin actual additions at 0 afterward. Retrying a batch preserves
+existing entries, notes and progress. The catalog is reevaluated on each call;
+there is no frozen snapshot or automatic write retry. Stop on errors and retain
+the last successfully returned cursor if you need to resume.
+
+The same three helpers exist on `ClassicChessClient`, with `api_token=` instead
+of positional `token`, and its usual exception-on-HTTP-error behavior. The
+application client instead retains HTTP errors in `status`/`data`.
+The standalone CLI retains its existing commands; these are library helpers.
+
 ## Optional standalone command-line script
 
 If you only want command-line commands without installing the Python package,
@@ -290,3 +354,21 @@ See the [API reference](https://classicchess.com/api/) for response fields,
 endpoint permissions, rate limits and data attribution. The MIT license covers
 the SDK code; linked chess resources retain their own stated reuse terms.
 Issues and pull requests are welcome; see [CONTRIBUTING.md](https://github.com/Andromeda1957/classicchess-api-python/blob/main/CONTRIBUTING.md).
+
+## Notebook annotation search and offline puzzle attempts
+
+These helpers require the matching server release. Search comments, glyphs and diagrams with
+`account_notebook_annotation_search(token, q="king", kind="comments", notebook_uuid=None, limit=50, cursor=None)`.
+It searches owned and directly invited Notebooks. Open a hit with its authorized PGN URL and
+child-index `path`; keep its `content_version` to detect edits. Follow a non-null cursor,
+including after an empty page. `complete=False` reports a bounded or partial scan.
+
+`account_puzzle_next(token, result="missed")` and `account_puzzle_history(token, result="missed")`
+review current incorrect attempts. `account_puzzle_batch(token, limit=25)` downloads 1–100
+playable puzzles. Keep the returned account ID, generation and each puzzle revision in
+account-separated private storage. Save each attempt locally before sending
+`account_puzzle_result(id, result, token, event_id=uuid, generation=generation, revision=revision)`;
+retry the same UUID and fields until acknowledged. Saved/duplicate responses acknowledge it;
+409 stale_generation/stale_puzzle/event_conflict and 404 are terminal. Keep queued attempts
+at their original reset generation. The SDK provides transport; your app owns durable storage,
+network retry/backoff, account isolation and sign-out cleanup.
