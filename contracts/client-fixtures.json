@@ -610,5 +610,86 @@
   "cancellation": {
     "preserve_caller_cancellation": true,
     "fetch_next_page": false
+  },
+  "imported_game_usernames": {
+    "rule": "The server's Django Unicode username rule: 1 to max_length letters or numbers in any script, plus _ . @ + -. Clients percent-encode non-ASCII characters as UTF-8 and refuse . and .., which a URL resolves as dot segments.",
+    "max_length": 150,
+    "length_characters": [
+      "a",
+      "棋",
+      "𠀀"
+    ],
+    "accepted": [
+      {
+        "username": "ann.lee+1",
+        "path_segment": "ann.lee+1"
+      },
+      {
+        "username": "a@b_c-d",
+        "path_segment": "a@b_c-d"
+      },
+      {
+        "username": "José",
+        "path_segment": "Jos%C3%A9"
+      },
+      {
+        "username": "棋手",
+        "path_segment": "%E6%A3%8B%E6%89%8B"
+      },
+      {
+        "username": "шахматы",
+        "path_segment": "%D1%88%D0%B0%D1%85%D0%BC%D0%B0%D1%82%D1%8B"
+      },
+      {
+        "username": "١٩٨٥",
+        "path_segment": "%D9%A1%D9%A9%D9%A8%D9%A5"
+      },
+      {
+        "username": "𠀀",
+        "path_segment": "%F0%A0%80%80"
+      }
+    ],
+    "rejected": [
+      {
+        "username": "",
+        "server_accepts": false
+      },
+      {
+        "username": ".",
+        "server_accepts": true
+      },
+      {
+        "username": "..",
+        "server_accepts": true
+      },
+      {
+        "username": "a/b",
+        "server_accepts": false
+      },
+      {
+        "username": "a b",
+        "server_accepts": false
+      },
+      {
+        "username": "a%2Fb",
+        "server_accepts": false
+      },
+      {
+        "username": "a?b",
+        "server_accepts": false
+      },
+      {
+        "username": "a#b",
+        "server_accepts": false
+      },
+      {
+        "username": "a\\b",
+        "server_accepts": false
+      },
+      {
+        "username": "a／b",
+        "server_accepts": false
+      }
+    ]
   }
 }

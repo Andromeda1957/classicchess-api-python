@@ -125,6 +125,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiError'
+        '503':
+          description: The reviewed catalog is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
   /api/v1/public/players/cards/:
     get:
       summary: List every curated player as a compact card for player lists
@@ -157,6 +163,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiError'
+        '503':
+          description: The reviewed catalog is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
   /api/v1/public/players/{player_slug}/:
     get:
       summary: Get one curated player profile, approved biography, portrait and links
@@ -180,6 +192,12 @@ paths:
                 $ref: '#/components/schemas/PublicPlayerDetail'
         '404':
           description: No public player archive with this slug and at least one archived game.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '503':
+          description: The reviewed catalog is unavailable.
           content:
             application/json:
               schema:
@@ -211,6 +229,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiError'
+        '503':
+          description: The reviewed catalog is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
   /api/v1/public/players/{player_slug}/notable-games/:
     get:
       summary: List a player's curated notable games, in editorial order
@@ -235,6 +259,12 @@ paths:
                 $ref: '#/components/schemas/PublicNotableGames'
         '404':
           description: No public player archive with this slug and at least one archived game.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '503':
+          description: The reviewed catalog is unavailable.
           content:
             application/json:
               schema:
@@ -273,6 +303,12 @@ paths:
                 $ref: '#/components/schemas/ApiError'
         '404':
           description: The series does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '503':
+          description: The reviewed catalog is unavailable.
           content:
             application/json:
               schema:
@@ -316,6 +352,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiError'
+        '503':
+          description: The reviewed catalog is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
   /api/v1/public/events/{event_slug}/:
     get:
       summary: Get one public study-event archive with canonical metadata and links
@@ -339,6 +381,12 @@ paths:
                 $ref: '#/components/schemas/PublicEventDetail'
         '404':
           description: No public study event with this slug.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '503':
+          description: The reviewed catalog is unavailable.
           content:
             application/json:
               schema:
@@ -367,6 +415,12 @@ paths:
                 $ref: '#/components/schemas/PublicEventAbout'
         '404':
           description: No public study event with this slug.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '503':
+          description: The reviewed catalog is unavailable.
           content:
             application/json:
               schema:
@@ -416,6 +470,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiError'
+        '503':
+          description: The reviewed catalog is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
   /api/v1/public/gallery/{photo_id}/:
     get:
       summary: Get one gallery photograph with its source, license and credit
@@ -438,6 +498,12 @@ paths:
                 $ref: '#/components/schemas/GalleryPhotoDetail'
         '404':
           description: No photograph with this ID.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '503':
+          description: The reviewed catalog is unavailable.
           content:
             application/json:
               schema:
@@ -490,6 +556,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PublicEventOfTheDay'
+        '503':
+          description: The reviewed catalog is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
   /api/v1/public/todays-picks/:
     get:
       summary: Get today's homepage picks
@@ -504,6 +576,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PublicTodaysPicks'
+        '503':
+          description: The reviewed catalog is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
   /api/v1/public/search/:
     get:
       summary: Search the curated archive like the site search box
@@ -748,6 +826,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiError'
+        '503':
+          description: The reviewed catalog is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
   /api/v1/public/games/export/:
     get:
       summary: Export player- and event-backed public archive games
@@ -901,6 +985,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiError'
+        '503':
+          description: The reviewed catalog is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
     post:
       summary: Export public archive games by canonical or compatibility token body
       operationId: exportPublicGamesByToken
@@ -1046,6 +1136,12 @@ paths:
                 $ref: '#/components/schemas/ApiError'
         '429':
           description: The client exceeded the export request budget.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '503':
+          description: The reviewed catalog is unavailable.
           content:
             application/json:
               schema:
@@ -2311,6 +2407,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiError'
+        '503':
+          description: The reviewed catalog is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
   /api/v1/annotated/books/{book_slug}/games/:
     get:
       summary: List games in an annotated book
@@ -2369,6 +2471,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiError'
+        '503':
+          description: The reviewed catalog is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
   /api/v1/annotated/books/{book_slug}/pgn/:
     get:
       summary: Export all games in an annotated book as PGN
@@ -2388,6 +2496,12 @@ paths:
                 type: string
         '404':
           description: No annotated book with this slug.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '503':
+          description: The reviewed catalog is unavailable.
           content:
             application/json:
               schema:
@@ -2424,6 +2538,12 @@ paths:
               schema:
                 type: string
                 description: Django's HTML error page, not the JSON error envelope.
+        '503':
+          description: The reviewed catalog is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
   /api/v1/annotated/books/{book_slug}/games/{game_slug}/pgn/:
     get:
       summary: Get one annotated game as PGN
@@ -2461,6 +2581,12 @@ paths:
               schema:
                 type: string
                 description: Django's HTML error page, not the JSON error envelope.
+        '503':
+          description: The reviewed catalog is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
   /api/v1/annotated/books/{book_slug}/games/{game_slug}/gif/:
     get:
       summary: Export one annotated book game as an animated GIF
@@ -3192,6 +3318,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiError'
+        '503':
+          description: 'content_unavailable: puzzle content is temporarily unavailable.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
       x-required-scopes:
       - puzzles:read
   /api/v1/account/puzzles/:
@@ -3275,6 +3407,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiError'
+        '503':
+          description: 'content_unavailable: puzzle content is temporarily unavailable.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
       x-required-scopes:
       - puzzles:read
   /api/v1/account/puzzles/history/:
@@ -3326,6 +3464,12 @@ paths:
                 $ref: '#/components/schemas/ApiError'
         '403':
           description: Personal API token is missing the puzzles:read scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '503':
+          description: 'content_unavailable: puzzle content is temporarily unavailable.'
           content:
             application/json:
               schema:
@@ -3397,6 +3541,12 @@ paths:
                 $ref: '#/components/schemas/ApiError'
         '404':
           description: 'No such puzzle: an unknown or withdrawn id.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '503':
+          description: 'content_unavailable: puzzle content is temporarily unavailable.'
           content:
             application/json:
               schema:
@@ -3483,6 +3633,12 @@ paths:
                 $ref: '#/components/schemas/ApiError'
         '413':
           description: 'too_large: the body is over 1 KB.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '503':
+          description: 'content_unavailable: puzzle content is temporarily unavailable.'
           content:
             application/json:
               schema:
@@ -5155,6 +5311,12 @@ paths:
                 $ref: '#/components/schemas/ApiError'
         '404':
           description: Collection not found for this account.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '503':
+          description: The reviewed catalog is unavailable.
           content:
             application/json:
               schema:
@@ -10268,6 +10430,7 @@ components:
                 enum:
                 - white
                 - black
+                - null
               white:
                 additionalProperties: {}
                 properties:

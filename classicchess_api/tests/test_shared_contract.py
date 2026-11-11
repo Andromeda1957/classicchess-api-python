@@ -6,8 +6,11 @@ from pathlib import Path
 from unittest import TestCase
 from unittest.mock import patch
 from urllib.error import HTTPError
+from urllib.parse import urlsplit
 
+from classicchess_api import ApplicationClient
 from classicchess_api import client as packaged
+from classicchess_api.tests.test_application import file_reply
 from classicchess_api.tests.test_robustness import Response
 from classicchess_api.tests.test_robustness import standalone_client
 
@@ -15,7 +18,8 @@ ROOT = Path(__file__).resolve().parents[2]
 FIXTURE_PATH = ROOT / 'contracts/client-fixtures.json'
 if not FIXTURE_PATH.is_file():
     FIXTURE_PATH = ROOT.parents[1] / 'docs/api/client-fixtures.json'
-FIXTURES = json.loads(FIXTURE_PATH.read_text())
+FIXTURES = json.loads(FIXTURE_PATH.read_text(encoding='utf-8'))
+USERNAMES = FIXTURES['imported_game_usernames']
 
 
 class SharedClientContractTests(TestCase):
@@ -79,3 +83,47 @@ class SharedClientContractTests(TestCase):
                         self.collect(module)
                 self.assertTrue(interrupted.closed)
                 self.assertEqual(wire.call_count, 1)
+
+
+class ImportedGameUsernameTests(TestCase):
+    """Every username the server accepts reaches the imported-game routes; nothing else is sent."""
+
+    def requested_paths(self, username):
+        sent = []
+
+        def reply(request, timeout):
+            sent.append(urlsplit(request.full_url).path)
+            return Response(b'{}')
+
+        api = packaged.ClassicChessClient()
+        with patch.object(packaged, 'urlopen', side_effect=reply):
+            api.public_imported_game(username, 'g1')
+            api.public_imported_pgn(username, 'g1')
+        with patch('classicchess_api.application.build_opener') as opener:
+            opener.return_value.open.return_value = file_reply(b'GIF89a', 'image/gif', 'game.gif')
+            ApplicationClient().public_imported_game_gif(username, 'g1', 't')
+        sent.append(urlsplit(opener.return_value.open.call_args.args[0].full_url).path)
+        return sent
+
+    def test_server_usernames_in_any_script_reach_the_imported_game_routes(self):
+        for case in USERNAMES['accepted']:
+            with self.subTest(username=case['username']):
+                game = '/api/v1/public/imported-games/' + case['path_segment'] + '/g1/'
+                self.assertEqual(self.requested_paths(case['username']), [game, game + 'pgn/', game + 'gif/'])
+        for character in USERNAMES['length_characters']:
+            with self.subTest(longest=character):
+                self.assertEqual(len(self.requested_paths(character * USERNAMES['max_length'])), 3)
+
+    def test_other_names_fail_before_any_request(self):
+        too_long = [character * (USERNAMES['max_length'] + 1) for character in USERNAMES['length_characters']]
+        api = packaged.ClassicChessClient()
+        calls = ((api.public_imported_game, ()), (api.public_imported_pgn, ()),
+                 (ApplicationClient().public_imported_game_gif, ('t',)))
+        for username in [case['username'] for case in USERNAMES['rejected']] + too_long:
+            with self.subTest(username=username[:8]), patch.object(packaged, 'urlopen') as wire, \
+                    patch('classicchess_api.application.build_opener') as opener:
+                for call, token in calls:
+                    with self.assertRaises(packaged.ApiError):
+                        call(username, 'g1', *token)
+                self.assertFalse(wire.called)
+                self.assertFalse(opener.return_value.open.called)

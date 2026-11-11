@@ -20,6 +20,7 @@ from .client import _collection_identifier
 from .client import _collection_name_query
 from .client import _curated_collection_payload
 from .client import ccnb_format_header
+from .client import encode_non_ascii
 from .client import public_slug_segment
 from .client import public_username_segment
 from .response import DEFAULT_MAX_RESPONSE_BYTES
@@ -231,7 +232,7 @@ class ApplicationClient:
             if not isinstance(content_type, str) or len(content_type) > 200 or '\r' in content_type or '\n' in content_type:
                 raise ApiError('Invalid content type.', code='invalid_request')
             headers['Content-Type'] = content_type
-        request = Request(urljoin(self.base_url, path), method=method, headers=headers, data=body)
+        request = Request(urljoin(self.base_url, encode_non_ascii(path)), method=method, headers=headers, data=body)
         try:
             try:
                 response = build_opener(NoRedirect()).open(request, timeout=deadline)

@@ -49,6 +49,9 @@ so install only one. Existing Python programs and CLI commands still work.
 The MasterDB and public game-list commands accept a nonnegative `--limit`. `--limit 0` returns no
 results and makes no per-game PGN requests. This applies to the default single
 page and to `--all-pages`; negative limits are rejected before a request is sent.
+The `export` commands take the same search filters but no `--limit`, `--page`,
+`--page-size`, `--all-pages` or `--pgn`: each export is one reply of at most 300
+games, so those options are refused before a request is sent.
 
 ## Read a player archive
 

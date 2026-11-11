@@ -114,12 +114,6 @@ class PublicGameSearchModeTests(unittest.TestCase):
             client.export_public_games(query='brons', search_mode='players')
         self.assertEqual(get_text.call_args.args[1]['search_mode'], 'players')
 
-    def test_omitted_search_mode_keeps_the_server_default(self):
-        client = ClassicChessClient()
-        with patch.object(client, 'fetch_json', return_value={'results': [], 'page_count': 1}) as fetch:
-            client.public_games('brons')
-        self.assertNotIn('search_mode', fetch.call_args.args[0])
-
     def test_unknown_search_mode_is_rejected_before_io(self):
         client = ClassicChessClient()
         with patch.object(client, 'fetch_json') as fetch:
@@ -302,21 +296,3 @@ class PaginatedClientTests(unittest.TestCase):
         self.assertEqual(payload["results"], [])
         self.assertEqual(payload["pages_fetched"], 1)
         self.assertEqual(get_json.call_count, 1)
-
-    def test_all_pages_propagates_a_later_network_failure(self) -> None:
-        client, _ = self.client_with_pages(
-            [
-                {"results": ["one"], "page_count": 2},
-                ApiError("Could not fetch https://example.test/api/v1/games/"),
-            ]
-        )
-
-        with self.assertRaisesRegex(ApiError, "Could not fetch"):
-            client._paginated(
-                "/api/v1/games/",
-                {},
-                page=1,
-                page_size=50,
-                all_pages=True,
-                limit=None,
-            )

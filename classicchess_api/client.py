@@ -8,6 +8,7 @@ from typing import Any
 from typing import Iterable
 from urllib.error import HTTPError
 from urllib.error import URLError
+from urllib.parse import quote
 from urllib.parse import urlencode
 from urllib.parse import urljoin
 from urllib.parse import urlparse
@@ -100,11 +101,25 @@ def public_slug_segment(value, label='slug'):
 
 
 def public_username_segment(value):
-    """An importer's username from a game page address, safe to place in a URL path."""
-    if (not isinstance(value, str) or re.fullmatch(r'[A-Za-z0-9@.+_-]{1,150}', value) is None
+    """An importer's username from a game page address; one URL path segment.
+
+    The server accepts up to 150 letters and numbers in any script plus _ . @ + -
+    (Django's Unicode username rule, the same ``\\w`` pattern), so names such as
+    José or 棋手 are valid. Request URLs percent-encode the non-ASCII characters.
+    """
+    if (not isinstance(value, str) or re.fullmatch(r'[\w.@+-]{1,150}', value) is None
             or value in ('.', '..')):
         raise ApiError('Use the exact username from the game page address.', code='invalid_query')
     return value
+
+
+def encode_non_ascii(path: str) -> str:
+    """Percent-encode a request path's non-ASCII characters as UTF-8, as URL parsers do.
+
+    The HTTP request line is ASCII, so urllib cannot send a Unicode path as it is.
+    ASCII paths are unchanged.
+    """
+    return re.sub(r'[^\x00-\x7f]+', lambda match: quote(match.group(0)), path)
 
 
 def normalized_base_url(value: str) -> str:
@@ -112,7 +127,7 @@ def normalized_base_url(value: str) -> str:
 
 
 def api_url(base_url: str, path: str, params: dict[str, Any] | None = None) -> str:
-    url = urljoin(normalized_base_url(base_url), path.lstrip("/"))
+    url = urljoin(normalized_base_url(base_url), encode_non_ascii(path.lstrip("/")))
     cleaned = {
         key: value for key, value in (params or {}).items() if value is not None and value != ""
     }

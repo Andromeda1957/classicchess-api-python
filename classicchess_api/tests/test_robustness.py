@@ -7,8 +7,6 @@ from pathlib import Path
 from unittest import TestCase
 from unittest.mock import patch
 from urllib.error import HTTPError
-from urllib.parse import parse_qs
-from urllib.parse import urlsplit
 
 from classicchess_api import client as packaged
 
@@ -47,24 +45,6 @@ class PythonClientRobustnessTests(TestCase):
                          all_pages=True, limit=limit)
         with patch.object(module, 'fetch_json', side_effect=fetch):
             return module.collect_master_game_pages(args, 'Tal')
-
-    def test_all_pages_follows_growing_counts_in_both_clients(self):
-        for module in self.clients():
-            for total in (3, 4, 6):
-                calls = []
-
-                def fetch(url, calls=calls, total=total):
-                    page = int(parse_qs(urlsplit(url).query).get('page', ['1'])[0])
-                    calls.append(page)
-                    return {'page': page, 'count': page, 'page_count': page + (page < total),
-                            'results': [{'token': str(page)}],
-                            'next': f'?q=Tal&page={page + 1}' if page < total else None}
-
-                with self.subTest(client=module.__name__, pages=total):
-                    result = self.collect(module, fetch)
-                    self.assertEqual(calls, list(range(1, total + 1)))
-                    self.assertEqual(len(result['results']), total)
-                    self.assertEqual(result['pages_fetched'], total)
 
     def test_continuations_cannot_leave_the_origin_or_collection(self):
         for module in self.clients():

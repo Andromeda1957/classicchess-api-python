@@ -811,7 +811,7 @@ def nonnegative_limit(value: str) -> int:
     return limit
 
 
-def add_games_args(parser: argparse.ArgumentParser, *, public: bool = False) -> None:
+def add_game_filter_args(parser: argparse.ArgumentParser, *, public: bool = False) -> None:
     parser.add_argument("-q", "--query", help="Raw game-search query.")
     parser.add_argument("--player", help="Player name query.")
     parser.add_argument("--opponent", help="Opponent name query.")
@@ -845,6 +845,10 @@ def add_games_args(parser: argparse.ArgumentParser, *, public: bool = False) -> 
             default="asc",
             help="Sort by public archive display date. Default: asc.",
         )
+
+
+def add_games_args(parser: argparse.ArgumentParser, *, public: bool = False) -> None:
+    add_game_filter_args(parser, public=public)
     parser.add_argument("--page", type=int, default=1, help="Result page. Default: 1.")
     parser.add_argument(
         "--page-size",
@@ -859,7 +863,12 @@ def add_games_args(parser: argparse.ArgumentParser, *, public: bool = False) -> 
 
 
 def add_export_args(parser: argparse.ArgumentParser, *, public: bool = False) -> None:
-    add_games_args(parser, public=public)
+    # An export is one server response capped at 300 games. The game-list options
+    # (--page, --page-size, --all-pages, --limit, --pgn) would change nothing, so an
+    # export parser leaves them out and is built without abbreviations: --pgn
+    # would otherwise resolve to --pgn-in-json and still be ignored.
+    add_game_filter_args(parser, public=public)
+    parser.add_argument("--output", help="Write the export to this file.")
     parser.add_argument(
         "--tokens",
         nargs="+",
@@ -909,7 +918,7 @@ def add_master_commands(subparsers: argparse._SubParsersAction) -> None:
     pgn.set_defaults(func=command_master_pgn)
 
     export = master_subparsers.add_parser(
-        "export", help="Bulk export MasterDB games as PGN or NDJSON."
+        "export", help="Bulk export MasterDB games as PGN or NDJSON.", allow_abbrev=False,
     )
     add_export_args(export)
     export.set_defaults(func=command_master_export)
@@ -966,7 +975,7 @@ def add_public_commands(subparsers: argparse._SubParsersAction) -> None:
     pgn.set_defaults(func=command_public_pgn)
 
     export = public_subparsers.add_parser(
-        "export", help="Bulk export public archive games as PGN or NDJSON."
+        "export", help="Bulk export public archive games as PGN or NDJSON.", allow_abbrev=False,
     )
     add_export_args(export, public=True)
     export.set_defaults(func=command_public_export)
