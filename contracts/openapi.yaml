@@ -205,6 +205,7 @@ paths:
   /api/v1/public/players/{player_slug}/bio/:
     get:
       summary: Read an approved player biography, structured sections, quotes and sources
+      description: 'The same content as the player''s HTML about page: the biography, its "From the archive" game picks (archive_picks) and the Books section (bibliography). The bibliography is published independently of biography approval.'
       operationId: getCuratedPlayerBiography
       tags:
       - Curated players
@@ -238,7 +239,7 @@ paths:
   /api/v1/public/players/{player_slug}/notable-games/:
     get:
       summary: List a player's curated notable games, in editorial order
-      description: Complete unpaginated list. Each entry has its one-based position, editorial title, annotation and a game summary with canonical detail and PGN URLs. The annotation explains the selection; it is not move-by-move commentary. An empty selection returns count 0 and results []. Only public games belonging to this player appear.
+      description: Complete unpaginated list. Each entry has its one-based position, editorial title, annotation and a game summary with canonical detail and PGN URLs. The annotation explains the selection; it is not move-by-move commentary. An empty selection returns count 0 and results []. Only public games belonging to this player appear. A game with one clear event adds urls.api_event_about and urls.html_event_about, as the website list links its event.
       operationId: listCuratedNotableGames
       tags:
       - Curated players
@@ -272,7 +273,7 @@ paths:
   /api/v1/public/event-series/:
     get:
       summary: Browse event-series cards, select a series, or search events
-      description: Complete catalog. Supply either q or series; omit both for series cards, including Matches and Misc.
+      description: 'Complete catalog. Supply either q or series; omit both for series cards, including Matches and Misc. A series answer lists its events oldest first and adds the series page layout: event_order and its named sections. 503 when the series'' sections or membership disagree with the archive.'
       operationId: listEventSeries
       tags:
       - Curated events
@@ -394,7 +395,7 @@ paths:
   /api/v1/public/events/{event_slug}/about/:
     get:
       summary: Read an event's about page, write-up, photographs, vitals and cross table
-      description: The same facts as the event's HTML about page. bio is null when no write-up exists; auto_vitals are always computed from the archive. crosstable is null when the event has no computable table, and otherwise has kind match, tournament, team or incomplete. Image URLs are absolute.
+      description: The same facts as the event's HTML about page. bio is null when no write-up exists; auto_vitals are always computed from the archive. A game collection takes its dates and location from its write-up only. crosstable is null when the event has no computable table, and otherwise has kind match, tournament, team or incomplete. archive_gap carries the page's "Incomplete record" notice and collection_note the note a game collection prints. Image URLs are absolute.
       operationId: getCuratedEventAbout
       tags:
       - Curated events
@@ -511,7 +512,7 @@ paths:
   /api/v1/public/beginner-games/:
     get:
       summary: Read the ordered beginner games guide
-      description: Complete ordered curriculum. Each entry has a one-based step, its study focus, and a spoiler-free game summary.
+      description: Complete ordered curriculum. Each entry has a one-based step, its study focus, and a spoiler-free game summary. starters lists the players the guide suggests studying first, with the reason it gives.
       operationId: getBeginnerGames
       tags:
       - Curated games
@@ -584,8 +585,8 @@ paths:
                 $ref: '#/components/schemas/ApiError'
   /api/v1/public/search/:
     get:
-      summary: Search the curated archive like the site search box
-      description: 'Without kind, returns the grouped preview the site search overlay shows: counts plus the first players, events and games. With kind, returns one 50-row page of that result kind. Queries may name one player, two players (a matchup), an event, or general game terms, optionally with a year.'
+      summary: Search the curated archive or the site content like the site search box
+      description: 'Without kind, returns the grouped preview the site search overlay shows: counts plus the first players, events and games. With kind games, events or players, returns one 50-row page of that result kind. Queries may name one player, two players (a matchup), an event, or general game terms, optionally with a year. With kind site, returns one 20-row page of the /search/?kind=site results: the site''s own pages and their sections, player biographies, event histories and What''s New posts, best match first, each with a quoted snippet and the matched words as character ranges. The preview covers the curated archive only, as the website''s Archive search does; site content appears only with kind site.'
       operationId: searchSite
       tags:
       - Search
@@ -600,11 +601,13 @@ paths:
           type: string
       - name: kind
         in: query
+        description: games, events or players return one 50-row page of that curated archive kind. site returns one 20-row page of the site's own pages, player biographies, event histories and What's New posts.
         schema:
           enum:
           - games
           - events
           - players
+          - site
           type: string
       - name: page
         in: query
@@ -615,15 +618,95 @@ paths:
           type: integer
       responses:
         '200':
-          description: Grouped preview, or one page of a result kind when kind is supplied.
+          description: Grouped archive preview, one page of a curated result kind, or one page of site content when kind is site.
           content:
             application/json:
               schema:
                 oneOf:
                 - $ref: '#/components/schemas/SiteSearchPreview'
                 - $ref: '#/components/schemas/SiteSearchPage'
+                - $ref: '#/components/schemas/SiteContentSearchPage'
         '400':
           description: Query exceeds its bounds or requests an unsupported format.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+  /api/v1/public/site-updates/:
+    get:
+      summary: List What's New posts, newest first
+      description: 'The posts the What''s New page lists, with every field their pages show: the plain-text body paragraphs, the onward link, and the image with its alt text and, for a gallery photograph, its source, license and credit. A post dated after today stays hidden until that day, as on the site. Image URLs are absolute. The Atom feed at /updates/feed/ carries the newest 20.'
+      operationId: listSiteUpdates
+      tags:
+      - Site updates
+      parameters:
+      - name: page
+        in: query
+        schema:
+          default: 1
+          minimum: 1
+          type: integer
+      - name: page_size
+        in: query
+        description: Values above 100 are clamped to 100.
+        schema:
+          default: 20
+          minimum: 1
+          type: integer
+      responses:
+        '200':
+          description: One page of What's New posts.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SiteUpdatePage'
+        '400':
+          description: Query exceeds its bounds or requests an unsupported format.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '404':
+          description: page is past the last page.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '503':
+          description: The reviewed catalog is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+  /api/v1/public/site-updates/{update_id}/:
+    get:
+      summary: Get one What's New post
+      description: 'The posts the What''s New page lists, with every field their pages show: the plain-text body paragraphs, the onward link, and the image with its alt text and, for a gallery photograph, its source, license and credit. A post dated after today stays hidden until that day, as on the site. Image URLs are absolute.'
+      operationId: getSiteUpdate
+      tags:
+      - Site updates
+      parameters:
+      - name: update_id
+        in: path
+        required: true
+        description: 'Post ID as returned in id: its YYYY-MM-DD date and a slug.'
+        schema:
+          type: string
+      responses:
+        '200':
+          description: One published post.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SiteUpdateDetail'
+        '404':
+          description: No published post with this ID. A post dated after today is not found until that day.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '503':
+          description: The reviewed catalog is unavailable.
           content:
             application/json:
               schema:
@@ -711,6 +794,7 @@ paths:
   /api/v1/public/games/:
     get:
       summary: Search player- and event-backed public archive games
+      description: A row whose game has one clear event adds urls.api_event_about and urls.html_event_about, as the website game lists link its event.
       operationId: listPublicGames
       tags:
       - Public archive
@@ -1149,6 +1233,7 @@ paths:
   /api/v1/public/games/{game_slug}/:
     get:
       summary: Canonical public archive game detail
+      description: 'The same record as the HTML game page: archive memberships with their site and API links, PGN, mainline, and primary_annotation, the book notes the page shows with their source credit and, when an annotated book publishes the game, its annotated-book links.'
       operationId: getPublicGame
       tags:
       - Public archive
@@ -1173,6 +1258,12 @@ paths:
               schema:
                 type: string
                 description: Django's HTML error page, not the JSON error envelope.
+        '503':
+          description: The reviewed catalog is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
   /api/v1/public/games/{game_slug}/pgn/:
     get:
       summary: Canonical public archive game PGN
@@ -1277,7 +1368,7 @@ paths:
   /api/v1/public/games/{player_slug}/{game_slug}/:
     get:
       summary: Compatibility URL for a game in a player's archive
-      description: Prefer the canonical game URL from urls.api_detail. This older URL remains supported for installed clients and validates player membership.
+      description: Prefer the canonical game URL from urls.api_detail. This older URL remains supported for installed clients and validates player membership. It adds primary_annotation as the canonical detail does.
       operationId: getPlayerArchiveGame
       parameters:
       - name: player_slug
@@ -1304,6 +1395,12 @@ paths:
               schema:
                 type: string
                 description: Django's HTML error page, not the JSON error envelope.
+        '503':
+          description: The reviewed catalog is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
       x-audience: compatibility
   /api/v1/public/games/{player_slug}/{game_slug}/pgn/:
     get:
@@ -1895,6 +1992,58 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiError'
+  /api/v1/analysis/game-link/:
+    post:
+      summary: Load a Lichess or Chess.com game from its link
+      description: The Analysis Board's game-link loader for API clients. Send a public Lichess or Chess.com game URL; the server fetches that one game from the provider and returns its PGN without creating an import or saving anything. Clients at one address share 12 requests per 15 minutes with the website, and provider fetches share the server-wide remote-import slots. No cookie or CSRF token is read.
+      operationId: resolveGameLink
+      tags:
+      - Analysis
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              properties:
+                url:
+                  description: A public Lichess or Chess.com game URL, as pasted on the Analysis Board.
+                  maxLength: 500
+                  type: string
+              required:
+              - url
+              type: object
+      responses:
+        '200':
+          description: 'The game, for one transient analysis session; Cache-Control: no-store.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResolvedGameLink'
+        '400':
+          description: The body is not a JSON object, url is missing, not a string or longer than 500 characters, or the link does not name a public game the provider returned as valid PGN.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '413':
+          description: The request body exceeds 4096 bytes.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '429':
+          description: The client budget or the shared provider-fetch capacity is exhausted; honor Retry-After when present.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '503':
+          description: Provider-fetch admission is unavailable; honor Retry-After.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
   /api/v1/stats/:
     get:
       summary: Player statistics
@@ -1995,7 +2144,7 @@ paths:
           type: integer
       responses:
         '200':
-          description: Paginated MasterDB game summaries.
+          description: Paginated MasterDB game summaries, with how q was read and, for two players, their record over q's years.
           content:
             application/json:
               schema:
@@ -2233,7 +2382,7 @@ paths:
           type: string
       responses:
         '200':
-          description: One game with PGN.
+          description: One game with PGN, the players' head-to-head record and their archive biography links.
           content:
             application/json:
               schema:
@@ -2371,7 +2520,7 @@ paths:
   /api/v1/annotated/books/:
     get:
       summary: List every annotated book, with source metadata and download links
-      description: 'CCNB-Format: 3 selects representation-specific binary package revisions; no format choice defaults to legacy format 2 revisions. The catalog and downloadable package respond with CCNB-Format and Vary: CCNB-Format. Unsupported values return ccnb_format_unsupported. The ccnb_format=2 or 3 URL query is equivalent; header and query must agree. Use the same choice for package downloads.'
+      description: 'CCNB-Format: 3 selects representation-specific binary package revisions; no format choice defaults to legacy format 2 revisions. The catalog and downloadable package respond with CCNB-Format and Vary: CCNB-Format. Unsupported values return ccnb_format_unsupported. The ccnb_format=2 or 3 URL query is equivalent; header and query must agree. Use the same choice for package downloads: urls.ccnb on the website or urls.api_ccnb (downloadAnnotatedBook), both of which name the format the catalog was read with.'
       operationId: listAnnotatedBooks
       tags:
       - Annotated books
@@ -2416,6 +2565,7 @@ paths:
   /api/v1/annotated/books/{book_slug}/games/:
     get:
       summary: List games in an annotated book
+      description: q searches the published annotation notes and author the source label. header_q searches the game headers and sort orders by date, as the website's book list does; the answer echoes both.
       operationId: listAnnotatedGames
       parameters:
       - name: book_slug
@@ -2442,7 +2592,13 @@ paths:
           type: integer
       - name: q
         in: query
-        description: Search published annotation text; all words must match a note record. Maximum eight terms.
+        description: Search published annotation note text, not game headers (use header_q); all words must match a note record. Maximum eight terms.
+        schema:
+          maxLength: 160
+          type: string
+      - name: header_q
+        in: query
+        description: 'Search the game headers as the website''s book search box does: one case-insensitive phrase found anywhere in White, Black, Event, Site, Date, opening name or ECO. Combines with q and author.'
         schema:
           maxLength: 160
           type: string
@@ -2452,6 +2608,15 @@ paths:
         schema:
           maxLength: 160
           type: string
+      - name: sort
+        in: query
+        description: Order by PGN date, undated games last, as the website book list does.
+        schema:
+          default: asc
+          enum:
+          - asc
+          - desc
+          type: string
       responses:
         '200':
           description: Paginated annotated games.
@@ -2460,7 +2625,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/AnnotatedGamePage'
         '400':
-          description: Pagination, q or author is invalid; repeated search parameters are rejected.
+          description: Pagination, q, header_q, author or sort is invalid; repeated search parameters are rejected.
           content:
             application/json:
               schema:
@@ -2506,6 +2671,51 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiError'
+  /api/v1/annotated/books/{book_slug}/ccnb/:
+    get:
+      summary: Download an annotated book as a .ccnb Notebook package
+      description: 'The website''s book download (urls.ccnb): every annotated game with its notes, the book''s mapped source pages and its rights metadata, for Classic Chess Notebook clients. CCNB-Format: 3 selects the binary record container; the ccnb_format=2 or 3 query is equivalent and header and query must agree; no choice defaults to legacy format 2. Unsupported, repeated or conflicting values return ccnb_format_unsupported. Responses carry CCNB-Format, Vary: CCNB-Format and an ETag naming the format and package digest; the package is public for an hour, then revalidated.'
+      operationId: downloadAnnotatedBook
+      tags:
+      - Annotated books
+      parameters:
+      - name: book_slug
+        in: path
+        required: true
+        schema:
+          maxLength: 128
+          type: string
+      - name: ccnb_format
+        in: query
+        description: Exact 2 or 3, equivalent to CCNB-Format; absent both defaults to 2. Repeated values or header disagreement are rejected.
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Unencrypted Classic Chess Notebook package attachment.
+          content:
+            application/vnd.classicchess.notebook:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Unsupported or conflicting CCNB-Format or ccnb_format (error code ccnb_format_unsupported).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '404':
+          description: No downloadable annotated book with this slug.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '503':
+          description: The reviewed catalog is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
   /api/v1/annotated/books/{book_slug}/games/{game_slug}/:
     get:
       summary: Get one annotated game
@@ -2523,7 +2733,7 @@ paths:
           type: string
       responses:
         '200':
-          description: One annotated game with PGN and annotation notes.
+          description: One annotated game with PGN, annotation notes and its scanned source pages.
           content:
             application/json:
               schema:
@@ -2670,7 +2880,7 @@ paths:
   /api/v1/account/gym/:
     get:
       summary: The Gym's bots, time controls and the account's first page of games
-      description: Every active account may play. Bot moves are computed on the server; the bot's weights never leave it. can_review_all is true only for the Gym's review accounts, which may also list and read other players' games (never change them).
+      description: 'Every active account may play. Bot moves are computed on the server; the bot''s weights never leave it. can_review_all is true only for the Gym''s review accounts, which may also list and read other players'' games (never change them). Each bot lists its weight versions as its card does: the version menu, each version''s move-match and training figures, and the default a new game plays.'
       operationId: getGym
       security:
       - AccountApiToken: *id001
@@ -2770,7 +2980,7 @@ paths:
   /api/v1/account/gym/bots/{bot_key}/games/:
     post:
       summary: Start a Gym game against a bot
-      description: One account may start 30 games an hour, counted together with the website. When the human plays Black the response has bot_to_move true; ask for the bot's move next.
+      description: One account may start 30 games an hour, counted together with the website. When the human plays Black the response has bot_to_move true; ask for the bot's move next. version chooses one of the bot's versions from getGym, as the website's version menu does; without it the game plays the bot's default_version. The game keeps that version to the end; bot_version in the response names it.
       operationId: startGymGame
       security:
       - AccountApiToken: *id001
@@ -2795,7 +3005,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/GymGameState'
         '400':
-          description: invalid_color, invalid_time_control or invalid_json.
+          description: invalid_color, invalid_time_control, invalid_version or invalid_json.
           content:
             application/json:
               schema:
@@ -3266,6 +3476,35 @@ paths:
                 $ref: '#/components/schemas/ApiError'
       x-required-scopes:
       - gym:play
+  /api/v1/public/gym/games/{token}/:
+    get:
+      summary: A Gym game by its signed share link
+      description: 'Every Gym game is public to anyone who holds its link, from its start, and no setting makes it private. This answers with what the link shows a visitor: the game on the analysis board, its PGN, and the bot with the version it plays. The player''s clocks, take-backs and abort are left out. A game still being played reads with its clock settled, so a game lost on time reads as over; ask again to follow it. The account''s games carry the address in urls.api_share.'
+      operationId: getSharedGymGame
+      security: []
+      parameters:
+      - name: token
+        in: path
+        required: true
+        description: 'The game''s signed token: the last path segment of the game''s urls.share.'
+        schema:
+          example: 42.UdIv0NXnPaQ8SDu2cYEOqT1ZYAuPTm7-ZvJRgtfm3fs
+          pattern: ^[0-9]+\.[A-Za-z0-9_-]+$
+          type: string
+      responses:
+        '200':
+          description: The game as its link shows it.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GymSharedGame'
+        '404':
+          description: 'not_found: the token is not a valid link, or the game was deleted.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+      x-access: 'The game''s signed link is the credential: anyone who holds the token from urls.share may read the game, as anyone may open that link on the website. A malformed, forged or altered token, or a deleted game, returns 404. Read-only; no bearer token or account cookie is required.'
   /api/v1/account/puzzles/batch/:
     get:
       summary: Download a bounded offline puzzle batch
@@ -3762,6 +4001,83 @@ paths:
                 $ref: '#/components/schemas/ApiError'
       x-required-scopes:
       - notebooks:read
+    post:
+      summary: Create a Notebook, optionally from a game, FEN or PGN
+      description: The account owns the new Notebook, which has one chapter, as when the website saves a game to a new Notebook. Each call creates a Notebook; a retry creates another.
+      operationId: createAccountNotebook
+      security:
+      - AccountApiToken: *id001
+      - MobileSessionToken: *id002
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              properties:
+                title:
+                  maxLength: 160
+                  minLength: 1
+                  type: string
+                description:
+                  maxLength: 2000
+                  type: string
+                visibility:
+                  description: Defaults to private.
+                  enum:
+                  - private
+                  - unlisted
+                  - public
+                  type: string
+                chapter_title:
+                  description: First chapter's title. Defaults to the game's players with game, otherwise Untitled analysis.
+                  maxLength: 160
+                  minLength: 1
+                  type: string
+                initial_position:
+                  description: A FEN, or one PGN game of at most 1 MB and 10,000 move nodes; empty or omitted starts from the standard position.
+                  type: string
+                game:
+                  description: Slug of a game this account can open (a public archive game, a public import or one of its own imports), such as urls.api_detail's last segment. The chapter starts from the PGN the game page offers. Not with initial_position.
+                  maxLength: 200
+                  minLength: 1
+                  type: string
+              required:
+              - title
+              type: object
+      responses:
+        '201':
+          description: The new Notebook with its folders and first chapter.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountNotebookDetail'
+        '400':
+          description: The body or a value in it is invalid; error.message names the problem.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          description: Missing, invalid, expired or revoked bearer token. Browser cookie sessions are not accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '403':
+          description: The personal API token lacks notebooks:write (missing_scope), or the account is not a public account (permission_denied).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '404':
+          description: No game this account can open has that slug.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+      x-required-scopes:
+      - notebooks:write
   /api/v1/account/notebooks/{notebook_uuid}/:
     get:
       summary: One Notebook's folders and chapters
@@ -3804,6 +4120,1316 @@ paths:
                 $ref: '#/components/schemas/ApiError'
       x-required-scopes:
       - notebooks:read
+    patch:
+      summary: Rename a Notebook
+      description: Owner or manager only, as on the website; every other setting keeps its value. Safe to retry.
+      operationId: renameAccountNotebook
+      security:
+      - AccountApiToken: *id001
+      - MobileSessionToken: *id002
+      parameters:
+      - name: notebook_uuid
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              properties:
+                title:
+                  maxLength: 160
+                  minLength: 1
+                  type: string
+              required:
+              - title
+              type: object
+      responses:
+        '200':
+          description: The renamed Notebook with its folders and chapters.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountNotebookDetail'
+        '400':
+          description: The body or a value in it is invalid; error.message names the problem.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          description: Missing, invalid, expired or revoked bearer token. Browser cookie sessions are not accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '403':
+          description: The personal API token lacks notebooks:write (missing_scope), or the account is not the owner or a manager (permission_denied).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '404':
+          description: Notebook not found, or this account neither owns it nor was invited to it. Changes never reveal a Notebook outside the account library.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+      x-required-scopes:
+      - notebooks:write
+    delete:
+      summary: Delete a Notebook
+      description: Owner only. Deletes every folder, chapter, collaborator and share link with it. A retry after success returns 404.
+      operationId: deleteAccountNotebook
+      security:
+      - AccountApiToken: *id001
+      - MobileSessionToken: *id002
+      parameters:
+      - name: notebook_uuid
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: Notebook deleted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountNotebookDeleted'
+        '401':
+          description: Missing, invalid, expired or revoked bearer token. Browser cookie sessions are not accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '403':
+          description: The personal API token lacks notebooks:manage (missing_scope), or the account is not the owner (permission_denied).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '404':
+          description: Notebook not found, or this account neither owns it nor was invited to it. Changes never reveal a Notebook outside the account library.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+      x-required-scopes:
+      - notebooks:manage
+  /api/v1/account/notebooks/{notebook_uuid}/settings/:
+    get:
+      summary: A Notebook's settings, owner and collaborators
+      description: 'Owner or manager only: what the website settings page shows.'
+      operationId: getAccountNotebookSettings
+      security:
+      - AccountApiToken: *id001
+      - MobileSessionToken: *id002
+      parameters:
+      - name: notebook_uuid
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: Settings, collaborators and the accepted choices.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountNotebookSettings'
+        '401':
+          description: Missing, invalid, expired or revoked bearer token. Browser cookie sessions are not accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '403':
+          description: The personal API token lacks notebooks:manage (missing_scope), or the account is not the owner or a manager (permission_denied).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '404':
+          description: Notebook not found, or this account neither owns it nor was invited to it. Changes never reveal a Notebook outside the account library.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+      x-required-scopes:
+      - notebooks:manage
+    patch:
+      summary: Change a Notebook's title, description, visibility or public exports
+      description: Owner or manager only. Settings left out keep their current values, including one another client changed meanwhile. Safe to retry.
+      operationId: updateAccountNotebookSettings
+      security:
+      - AccountApiToken: *id001
+      - MobileSessionToken: *id002
+      parameters:
+      - name: notebook_uuid
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              description: Send at least one setting; each one left out keeps its current value.
+              properties:
+                title:
+                  maxLength: 160
+                  minLength: 1
+                  type: string
+                description:
+                  maxLength: 2000
+                  type: string
+                visibility:
+                  enum:
+                  - private
+                  - unlisted
+                  - public
+                  type: string
+                allow_public_exports:
+                  description: Lets accounts that can open the Notebook but are not members export it.
+                  type: boolean
+              type: object
+      responses:
+        '200':
+          description: The settings after the change.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountNotebookSettings'
+        '400':
+          description: The body or a value in it is invalid; error.message names the problem.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          description: Missing, invalid, expired or revoked bearer token. Browser cookie sessions are not accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '403':
+          description: The personal API token lacks notebooks:manage (missing_scope), or the account is not the owner or a manager (permission_denied).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '404':
+          description: Notebook not found, or this account neither owns it nor was invited to it. Changes never reveal a Notebook outside the account library.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+      x-required-scopes:
+      - notebooks:manage
+  /api/v1/account/notebooks/{notebook_uuid}/collaborators/:
+    post:
+      summary: Invite an account to a Notebook or change its role
+      description: Owner or manager only; only the owner can grant manager or change a manager. Inviting an existing collaborator changes its role. Safe to retry. The settings read lists every collaborator.
+      operationId: upsertAccountNotebookCollaborator
+      security:
+      - AccountApiToken: *id001
+      - MobileSessionToken: *id002
+      parameters:
+      - name: notebook_uuid
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              properties:
+                username:
+                  description: An existing public account, ignoring case.
+                  maxLength: 150
+                  minLength: 1
+                  type: string
+                role:
+                  description: Only the owner can grant manager or change a manager.
+                  enum:
+                  - viewer
+                  - commenter
+                  - editor
+                  - manager
+                  type: string
+                can_present_live:
+                  default: false
+                  description: Kept only for editors and managers.
+                  type: boolean
+              required:
+              - username
+              - role
+              type: object
+      responses:
+        '200':
+          description: The existing collaborator with its new role.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountNotebookCollaborator'
+        '201':
+          description: The newly invited collaborator.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountNotebookCollaborator'
+        '400':
+          description: Unknown or non-public account, the owner, or an invalid body.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          description: Missing, invalid, expired or revoked bearer token. Browser cookie sessions are not accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '403':
+          description: The personal API token lacks notebooks:manage (missing_scope), or the account is not the owner or a manager, or a manager tried to grant or change manager (permission_denied).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '404':
+          description: Notebook not found, or this account neither owns it nor was invited to it. Changes never reveal a Notebook outside the account library.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+      x-required-scopes:
+      - notebooks:manage
+  /api/v1/account/notebooks/{notebook_uuid}/collaborators/{collaborator_id}/:
+    delete:
+      summary: Remove a collaborator from a Notebook
+      description: Owner or manager only; only the owner can remove a manager. Removing a collaborator already gone returns 200 with deleted false. Safe to retry.
+      operationId: removeAccountNotebookCollaborator
+      security:
+      - AccountApiToken: *id001
+      - MobileSessionToken: *id002
+      parameters:
+      - name: notebook_uuid
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: collaborator_id
+        in: path
+        required: true
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: Collaborator removed, or already gone.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountNotebookDeleted'
+        '400':
+          description: The collaborator was removed by another request meanwhile.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          description: Missing, invalid, expired or revoked bearer token. Browser cookie sessions are not accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '403':
+          description: The personal API token lacks notebooks:manage (missing_scope), or the account is not the owner or a manager, or a manager tried to remove a manager (permission_denied).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '404':
+          description: Notebook not found, or this account neither owns it nor was invited to it. Changes never reveal a Notebook outside the account library.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+      x-required-scopes:
+      - notebooks:manage
+  /api/v1/account/notebooks/{notebook_uuid}/membership/:
+    delete:
+      summary: Leave a Notebook shared with this account
+      description: Removes only this account's own invitation, whatever its role. The owner cannot leave. Afterwards the Notebook is no longer in the library, so a retry returns 404.
+      operationId: leaveAccountNotebook
+      security:
+      - AccountApiToken: *id001
+      - MobileSessionToken: *id002
+      parameters:
+      - name: notebook_uuid
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: This account left the Notebook.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountNotebookDeleted'
+        '401':
+          description: Missing, invalid, expired or revoked bearer token. Browser cookie sessions are not accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '403':
+          description: The personal API token lacks notebooks:manage (missing_scope), or the account owns the Notebook (permission_denied).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '404':
+          description: Notebook not found, or this account neither owns it nor was invited to it. Changes never reveal a Notebook outside the account library.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+      x-required-scopes:
+      - notebooks:manage
+  /api/v1/account/notebooks/{notebook_uuid}/share/:
+    get:
+      summary: A Notebook's share link
+      description: Owner or manager only. A share link opens a read-only view without signing in until it is revoked; keep its url private.
+      operationId: getAccountNotebookShare
+      security:
+      - AccountApiToken: *id001
+      - MobileSessionToken: *id002
+      parameters:
+      - name: notebook_uuid
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: The active Notebook share link, or active false.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountNotebookShare'
+        '401':
+          description: Missing, invalid, expired or revoked bearer token. Browser cookie sessions are not accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '403':
+          description: The personal API token lacks notebooks:manage (missing_scope), or the account is not the owner or a manager (permission_denied).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '404':
+          description: Notebook not found, or this account neither owns it nor was invited to it. Changes never reveal a Notebook outside the account library.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+      x-required-scopes:
+      - notebooks:manage
+    put:
+      summary: Create or reuse a Notebook share link
+      description: Owner or manager only. A share link opens a read-only view without signing in until it is revoked; keep its url private. An active link is returned unchanged. Safe to retry.
+      operationId: createAccountNotebookShare
+      security:
+      - AccountApiToken: *id001
+      - MobileSessionToken: *id002
+      parameters:
+      - name: notebook_uuid
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: The active Notebook share link.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountNotebookShare'
+        '401':
+          description: Missing, invalid, expired or revoked bearer token. Browser cookie sessions are not accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '403':
+          description: The personal API token lacks notebooks:manage (missing_scope), or the account is not the owner or a manager (permission_denied).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '404':
+          description: Notebook not found, or this account neither owns it nor was invited to it. Changes never reveal a Notebook outside the account library.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+      x-required-scopes:
+      - notebooks:manage
+    delete:
+      summary: Revoke a Notebook share link
+      description: Owner or manager only. Chapter share links stay active. Revoking when no link is active is not an error. Safe to retry.
+      operationId: revokeAccountNotebookShare
+      security:
+      - AccountApiToken: *id001
+      - MobileSessionToken: *id002
+      parameters:
+      - name: notebook_uuid
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: No Notebook share link is active.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountNotebookShare'
+        '401':
+          description: Missing, invalid, expired or revoked bearer token. Browser cookie sessions are not accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '403':
+          description: The personal API token lacks notebooks:manage (missing_scope), or the account is not the owner or a manager (permission_denied).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '404':
+          description: Notebook not found, or this account neither owns it nor was invited to it. Changes never reveal a Notebook outside the account library.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+      x-required-scopes:
+      - notebooks:manage
+  /api/v1/account/notebooks/{notebook_uuid}/sections/:
+    post:
+      summary: Add a folder to a Notebook
+      description: Owner, manager or editor. The folder goes last among its siblings. Each call adds a folder.
+      operationId: createAccountNotebookSection
+      security:
+      - AccountApiToken: *id001
+      - MobileSessionToken: *id002
+      parameters:
+      - name: notebook_uuid
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              properties:
+                title:
+                  maxLength: 160
+                  minLength: 1
+                  type: string
+                parent_id:
+                  type:
+                  - integer
+                  - 'null'
+                  minimum: 1
+                  description: Folder to add it in; null or omitted adds it at the top level.
+              required:
+              - title
+              type: object
+      responses:
+        '201':
+          description: The new folder.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountNotebookDetailSectionsItem'
+        '400':
+          description: The body or a value in it is invalid; error.message names the problem.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          description: Missing, invalid, expired or revoked bearer token. Browser cookie sessions are not accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '403':
+          description: The personal API token lacks notebooks:write (missing_scope), or the account is a viewer or commenter (permission_denied).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '404':
+          description: Notebook not found, or this account neither owns it nor was invited to it. Changes never reveal a Notebook outside the account library.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+      x-required-scopes:
+      - notebooks:write
+  /api/v1/account/notebooks/{notebook_uuid}/sections/{section_id}/:
+    patch:
+      summary: Rename a Notebook folder
+      description: Owner, manager or editor. Safe to retry.
+      operationId: renameAccountNotebookSection
+      security:
+      - AccountApiToken: *id001
+      - MobileSessionToken: *id002
+      parameters:
+      - name: notebook_uuid
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: section_id
+        in: path
+        required: true
+        schema:
+          type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              properties:
+                title:
+                  maxLength: 160
+                  minLength: 1
+                  type: string
+              required:
+              - title
+              type: object
+      responses:
+        '200':
+          description: The renamed folder.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountNotebookDetailSectionsItem'
+        '400':
+          description: The body or a value in it is invalid; error.message names the problem.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          description: Missing, invalid, expired or revoked bearer token. Browser cookie sessions are not accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '403':
+          description: The personal API token lacks notebooks:write (missing_scope), or the account is a viewer or commenter (permission_denied).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '404':
+          description: Notebook not found in the account library, or no such folder in it.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+      x-required-scopes:
+      - notebooks:write
+    delete:
+      summary: Delete a Notebook folder with everything in it
+      description: 'Owner, manager or editor, as on the website: deletes every nested folder and every chapter they hold. A retry after success returns 404.'
+      operationId: deleteAccountNotebookSection
+      security:
+      - AccountApiToken: *id001
+      - MobileSessionToken: *id002
+      parameters:
+      - name: notebook_uuid
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: section_id
+        in: path
+        required: true
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: The folders and chapters deleted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountNotebookSectionDeletion'
+        '400':
+          description: The folder was deleted by another request meanwhile.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          description: Missing, invalid, expired or revoked bearer token. Browser cookie sessions are not accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '403':
+          description: The personal API token lacks notebooks:write (missing_scope), or the account is a viewer or commenter (permission_denied).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '404':
+          description: Notebook not found in the account library, or no such folder in it.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+      x-required-scopes:
+      - notebooks:write
+  /api/v1/account/notebooks/{notebook_uuid}/sections/{section_id}/move/:
+    post:
+      summary: Move a Notebook folder
+      description: Owner, manager or editor. Moves the folder, with its contents, under parent_id before before_section_id. A folder cannot move into itself or its own subfolder. Siblings are renumbered, so the response carries the whole tree.
+      operationId: moveAccountNotebookSection
+      security:
+      - AccountApiToken: *id001
+      - MobileSessionToken: *id002
+      parameters:
+      - name: notebook_uuid
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: section_id
+        in: path
+        required: true
+        schema:
+          type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              properties:
+                parent_id:
+                  type:
+                  - integer
+                  - 'null'
+                  minimum: 1
+                  description: New parent folder; null or omitted moves it to the top level.
+                before_section_id:
+                  type:
+                  - integer
+                  - 'null'
+                  minimum: 1
+                  description: Sibling folder to place it before; null or omitted places it last.
+              type: object
+      responses:
+        '200':
+          description: The Notebook after the move.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountNotebookDetail'
+        '400':
+          description: The body or a value in it is invalid; error.message names the problem.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          description: Missing, invalid, expired or revoked bearer token. Browser cookie sessions are not accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '403':
+          description: The personal API token lacks notebooks:write (missing_scope), or the account is a viewer or commenter (permission_denied).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '404':
+          description: Notebook not found in the account library, or no such folder in it.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+      x-required-scopes:
+      - notebooks:write
+  /api/v1/account/notebooks/{notebook_uuid}/chapters/:
+    post:
+      summary: Add a chapter from a game, FEN or PGN
+      description: Owner, manager or editor, as when the website saves a game to an existing Notebook. The chapter goes last. Each call adds a chapter.
+      operationId: createAccountNotebookChapter
+      security:
+      - AccountApiToken: *id001
+      - MobileSessionToken: *id002
+      parameters:
+      - name: notebook_uuid
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              properties:
+                title:
+                  description: Defaults to the game's players with game, otherwise Untitled analysis.
+                  maxLength: 160
+                  minLength: 1
+                  type: string
+                section_id:
+                  type:
+                  - integer
+                  - 'null'
+                  minimum: 1
+                  description: Folder to add it in; null or omitted adds it at the top level.
+                initial_position:
+                  description: A FEN, or one PGN game of at most 1 MB and 10,000 move nodes; empty or omitted starts from the standard position.
+                  type: string
+                game:
+                  description: Slug of a game this account can open (a public archive game, a public import or one of its own imports), such as urls.api_detail's last segment. The chapter starts from the PGN the game page offers. Not with initial_position.
+                  maxLength: 200
+                  minLength: 1
+                  type: string
+              type: object
+      responses:
+        '201':
+          description: The new chapter with its PGN.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountNotebookChapterDetail'
+        '400':
+          description: The body or a value in it is invalid; error.message names the problem.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          description: Missing, invalid, expired or revoked bearer token. Browser cookie sessions are not accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '403':
+          description: The personal API token lacks notebooks:write (missing_scope), or the account is a viewer or commenter (permission_denied).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '404':
+          description: Notebook not found, or this account neither owns it nor was invited to it. Changes never reveal a Notebook outside the account library. Or no game this account can open has that slug.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+      x-required-scopes:
+      - notebooks:write
+  /api/v1/account/notebooks/{notebook_uuid}/chapters/{chapter_id}/:
+    get:
+      summary: One Notebook chapter's PGN and content_version
+      description: The same export rule as the chapter PGN download. Read the PGN and content_version together here before an edit that will be saved.
+      operationId: getAccountNotebookChapter
+      security:
+      - AccountApiToken: *id001
+      - MobileSessionToken: *id002
+      parameters:
+      - name: notebook_uuid
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: chapter_id
+        in: path
+        required: true
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: The chapter and its PGN.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountNotebookChapterDetail'
+        '401':
+          description: Missing, invalid, expired or revoked bearer token. Browser cookie sessions are not accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '403':
+          description: Personal API token is missing the notebooks:read scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '404':
+          description: Notebook or chapter not found, or not exportable by this account.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+      x-required-scopes:
+      - notebooks:read
+    put:
+      summary: Save a Notebook chapter's PGN
+      description: Owner, manager or editor. Replaces the PGN only when content_version still matches, as the website Workbench saves; otherwise 409 chapter_conflict, and nothing changes. Reload the chapter, reapply the edit and save again. Retrying a save that succeeded also returns 409.
+      operationId: saveAccountNotebookChapter
+      security:
+      - AccountApiToken: *id001
+      - MobileSessionToken: *id002
+      parameters:
+      - name: notebook_uuid
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: chapter_id
+        in: path
+        required: true
+        schema:
+          type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              properties:
+                pgn:
+                  description: The whole chapter as one PGN game, at most 1 MB and 10,000 move nodes.
+                  type: string
+                content_version:
+                  description: The content_version of the chapter this edit started from.
+                  minimum: 1
+                  type: integer
+                title:
+                  description: Omit to keep the current title.
+                  maxLength: 160
+                  minLength: 1
+                  type: string
+              required:
+              - pgn
+              - content_version
+              type: object
+      responses:
+        '200':
+          description: The saved chapter with its new content_version.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountNotebookChapterDetail'
+        '400':
+          description: The body or a value in it is invalid; error.message names the problem.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          description: Missing, invalid, expired or revoked bearer token. Browser cookie sessions are not accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '403':
+          description: The personal API token lacks notebooks:write (missing_scope), or the account is a viewer or commenter (permission_denied).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '404':
+          description: Notebook not found in the account library, or no such chapter in it.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '409':
+          description: 'chapter_conflict: the chapter changed after content_version was read.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+      x-required-scopes:
+      - notebooks:write
+    patch:
+      summary: Rename a Notebook chapter
+      description: Owner, manager or editor. A rename raises content_version, so a save based on the earlier version conflicts. Safe to retry.
+      operationId: renameAccountNotebookChapter
+      security:
+      - AccountApiToken: *id001
+      - MobileSessionToken: *id002
+      parameters:
+      - name: notebook_uuid
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: chapter_id
+        in: path
+        required: true
+        schema:
+          type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              properties:
+                title:
+                  maxLength: 160
+                  minLength: 1
+                  type: string
+              required:
+              - title
+              type: object
+      responses:
+        '200':
+          description: The renamed chapter with its new content_version.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountNotebookChapterDetail'
+        '400':
+          description: The body or a value in it is invalid; error.message names the problem.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          description: Missing, invalid, expired or revoked bearer token. Browser cookie sessions are not accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '403':
+          description: The personal API token lacks notebooks:write (missing_scope), or the account is a viewer or commenter (permission_denied).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '404':
+          description: Notebook not found in the account library, or no such chapter in it.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+      x-required-scopes:
+      - notebooks:write
+    delete:
+      summary: Delete a Notebook chapter
+      description: Owner, manager or editor. A retry after success returns 404.
+      operationId: deleteAccountNotebookChapter
+      security:
+      - AccountApiToken: *id001
+      - MobileSessionToken: *id002
+      parameters:
+      - name: notebook_uuid
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: chapter_id
+        in: path
+        required: true
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: Chapter deleted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountNotebookDeleted'
+        '400':
+          description: The chapter was deleted by another request meanwhile.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          description: Missing, invalid, expired or revoked bearer token. Browser cookie sessions are not accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '403':
+          description: The personal API token lacks notebooks:write (missing_scope), or the account is a viewer or commenter (permission_denied).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '404':
+          description: Notebook not found in the account library, or no such chapter in it.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+      x-required-scopes:
+      - notebooks:write
+  /api/v1/account/notebooks/{notebook_uuid}/chapters/{chapter_id}/move/:
+    post:
+      summary: Move a Notebook chapter
+      description: Owner, manager or editor. Moves the chapter into section_id before before_chapter_id. Chapters are renumbered, so the response carries the whole tree.
+      operationId: moveAccountNotebookChapter
+      security:
+      - AccountApiToken: *id001
+      - MobileSessionToken: *id002
+      parameters:
+      - name: notebook_uuid
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: chapter_id
+        in: path
+        required: true
+        schema:
+          type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              properties:
+                section_id:
+                  type:
+                  - integer
+                  - 'null'
+                  minimum: 1
+                  description: Folder to move it into; null or omitted moves it to the top level.
+                before_chapter_id:
+                  type:
+                  - integer
+                  - 'null'
+                  minimum: 1
+                  description: Chapter to place it before; null or omitted places it last.
+              type: object
+      responses:
+        '200':
+          description: The Notebook after the move.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountNotebookDetail'
+        '400':
+          description: The body or a value in it is invalid; error.message names the problem.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          description: Missing, invalid, expired or revoked bearer token. Browser cookie sessions are not accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '403':
+          description: The personal API token lacks notebooks:write (missing_scope), or the account is a viewer or commenter (permission_denied).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '404':
+          description: Notebook not found in the account library, or no such chapter in it.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+      x-required-scopes:
+      - notebooks:write
+  /api/v1/account/notebooks/{notebook_uuid}/chapters/{chapter_id}/share/:
+    get:
+      summary: A Notebook chapter's share link
+      description: Owner or manager only. A share link opens a read-only view without signing in until it is revoked; keep its url private. A chapter link opens only that chapter.
+      operationId: getAccountNotebookChapterShare
+      security:
+      - AccountApiToken: *id001
+      - MobileSessionToken: *id002
+      parameters:
+      - name: notebook_uuid
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: chapter_id
+        in: path
+        required: true
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: The active chapter share link, or active false.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountNotebookShare'
+        '401':
+          description: Missing, invalid, expired or revoked bearer token. Browser cookie sessions are not accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '403':
+          description: The personal API token lacks notebooks:manage (missing_scope), or the account is not the owner or a manager (permission_denied).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '404':
+          description: Notebook not found in the account library, or no such chapter in it.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+      x-required-scopes:
+      - notebooks:manage
+    put:
+      summary: Create or reuse a Notebook chapter share link
+      description: Owner or manager only. A share link opens a read-only view without signing in until it is revoked; keep its url private. An active link is returned unchanged. Safe to retry.
+      operationId: createAccountNotebookChapterShare
+      security:
+      - AccountApiToken: *id001
+      - MobileSessionToken: *id002
+      parameters:
+      - name: notebook_uuid
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: chapter_id
+        in: path
+        required: true
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: The active chapter share link.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountNotebookShare'
+        '401':
+          description: Missing, invalid, expired or revoked bearer token. Browser cookie sessions are not accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '403':
+          description: The personal API token lacks notebooks:manage (missing_scope), or the account is not the owner or a manager (permission_denied).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '404':
+          description: Notebook not found in the account library, or no such chapter in it.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+      x-required-scopes:
+      - notebooks:manage
+    delete:
+      summary: Revoke a Notebook chapter share link
+      description: Owner or manager only. The Notebook share link stays active. Revoking when no link is active is not an error. Safe to retry.
+      operationId: revokeAccountNotebookChapterShare
+      security:
+      - AccountApiToken: *id001
+      - MobileSessionToken: *id002
+      parameters:
+      - name: notebook_uuid
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: chapter_id
+        in: path
+        required: true
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: No share link is active for this chapter.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountNotebookShare'
+        '401':
+          description: Missing, invalid, expired or revoked bearer token. Browser cookie sessions are not accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '403':
+          description: The personal API token lacks notebooks:manage (missing_scope), or the account is not the owner or a manager (permission_denied).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '404':
+          description: Notebook not found in the account library, or no such chapter in it.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+      x-required-scopes:
+      - notebooks:manage
   /api/v1/account/notebooks/{notebook_uuid}/file/:
     get:
       summary: Download the whole Notebook as a .ccnb file
@@ -4242,17 +5868,18 @@ paths:
   /api/v1/account/me/:
     get:
       summary: Authenticated account summary
+      description: 'Read-only. Also reports whether the account has a password, its two-step sign-in state, linked Google and Lichess accounts, entitlements, and the credential that made the request: its kind and name, and for a token its scopes and expiry. Token secrets, hashes and prefixes are never returned. Email, password, two-step sign-in and security keys change on the website, or in the app after a device confirmation.'
       operationId: getAccount
       security:
       - AccountApiToken: *id001
       - MobileSessionToken: *id002
       responses:
         '200':
-          description: Current account username, email, and email verification state.
+          description: Current account, its security and linked-account state, and the calling credential.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AccountSummary'
+                $ref: '#/components/schemas/AccountProfile'
         '401':
           description: Missing, invalid, expired or revoked bearer token. Browser cookie sessions are not accepted.
           content:
@@ -4267,6 +5894,153 @@ paths:
                 $ref: '#/components/schemas/ApiError'
       x-required-scopes:
       - account:read
+  /api/v1/account/preferences/:
+    get:
+      summary: The website's board, engine, viewer, sound and speech preferences
+      description: The values the website Settings page and board pickers use, with the choices they offer. Sound and speech are the website's own; the Android app keeps separate ones that this API never reads or changes.
+      operationId: getPreferences
+      security:
+      - AccountApiToken: *id001
+      - MobileSessionToken: *id002
+      responses:
+        '200':
+          description: Current website preferences and their choices.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountPreferences'
+        '401':
+          description: Missing, invalid, expired or revoked bearer token. Browser cookie sessions are not accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '403':
+          description: Personal API token is missing the preferences:read scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+      x-required-scopes:
+      - preferences:read
+    patch:
+      summary: Change some website preferences
+      description: Only the fields sent change. Every value is checked as the website checks it, and narration is checked against the account on every write. When any value is refused, nothing changes. Safe to retry.
+      operationId: updatePreferences
+      security:
+      - AccountApiToken: *id001
+      - MobileSessionToken: *id002
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              description: Send only the preferences to change. When any value is refused, nothing changes.
+              properties:
+                disable_animations:
+                  type: boolean
+                reading_font:
+                  description: A key from catalogs.reading_fonts.
+                  type: string
+                board_theme:
+                  description: A key from catalogs.board_themes.
+                  type: string
+                piece_set:
+                  description: A key from catalogs.piece_sets.
+                  type: string
+                board_input_mode:
+                  description: A key from catalogs.board_input_modes.
+                  type: string
+                keyboard_move_entry:
+                  type: boolean
+                move_tree_theme:
+                  description: A key from catalogs.move_tree_themes.
+                  type: string
+                annotation_color_normal:
+                  pattern: ^#[0-9A-Fa-f]{6}$
+                  type: string
+                annotation_color_ctrl:
+                  pattern: ^#[0-9A-Fa-f]{6}$
+                  type: string
+                annotation_color_alt:
+                  pattern: ^#[0-9A-Fa-f]{6}$
+                  type: string
+                annotation_color_ctrl_alt:
+                  pattern: ^#[0-9A-Fa-f]{6}$
+                  type: string
+                autoplay_seconds:
+                  maximum: 180
+                  minimum: 1
+                  type: integer
+                engine_depth:
+                  description: A value from catalogs.engine_depths.
+                  type: integer
+                engine_lines:
+                  maximum: 5
+                  minimum: 1
+                  type: integer
+                engine_eval_bar:
+                  type: boolean
+                engine_enabled:
+                  type: boolean
+                sound_set:
+                  description: A key from catalogs.sound_sets. Choosing one turns website narration off.
+                  type: string
+                sound_volume:
+                  maximum: 100
+                  minimum: 0
+                  type: integer
+                speech_enabled:
+                  description: Turning narration on needs speech_available and selects the silent sound set.
+                  type: boolean
+                speech_level:
+                  description: Needs speech_available. Rounded to the nearest 0.5.
+                  maximum: 10
+                  minimum: 1
+                  type: number
+                speech_voice:
+                  description: Needs speech_available.
+                  maxLength: 200
+                  type: string
+                viewer_layouts:
+                  $ref: '#/components/schemas/ViewerLayoutState'
+                  description: The complete layout state; it replaces the saved one.
+                viewer_keybindings:
+                  additionalProperties:
+                    items:
+                      type: string
+                    type: array
+                  description: 'Replaces every override: a command left out returns to its default key.'
+                  type: object
+              type: object
+      responses:
+        '200':
+          description: The updated website preferences.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountPreferences'
+        '400':
+          description: 'invalid_preference: an unknown field, a null, or a value the website would refuse, including narration this account cannot use; invalid_request: the body is not a JSON object. Nothing changed.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          description: Missing, invalid, expired or revoked bearer token. Browser cookie sessions are not accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '403':
+          description: Personal API token is missing the preferences:write scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+      x-required-scopes:
+      - preferences:write
   /api/v1/account/collections/:
     get:
       summary: List account collections
@@ -4389,6 +6163,12 @@ paths:
           - player
           - manual
           type: string
+      - name: q
+        in: query
+        description: Keep games whose white or black player, event, date, opening name or ECO code contains this text, ignoring case, as the website collection page's filter does. Surrounding spaces are ignored; filtering happens before pagination.
+        schema:
+          maxLength: 200
+          type: string
       responses:
         '200':
           description: Paginated collection games.
@@ -4397,7 +6177,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/AccountCollectionPage'
         '400':
-          description: Invalid pagination.
+          description: Invalid pagination, or q repeated or longer than 200 characters.
           content:
             application/json:
               schema:
@@ -4702,6 +6482,52 @@ paths:
                 $ref: '#/components/schemas/ApiError'
         '404':
           description: Collection not found for this account.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+      x-required-scopes:
+      - library:write
+  /api/v1/account/collections/{collection_id}/games/{game_slug}/:
+    delete:
+      summary: Remove a game from an owned collection by its slug
+      description: Idempotent. Removing a game that is not in the collection returns changed false. A game already in the collection can be removed even after its importer made it private.
+      operationId: removeCollectionGameBySlug
+      security:
+      - AccountApiToken: *id001
+      - MobileSessionToken: *id002
+      parameters:
+      - name: collection_id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: game_slug
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: The game is out of the collection; changed is false when it was not in it.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountCollectionGameRemoved'
+        '401':
+          description: Missing, invalid, expired or revoked bearer token. Browser cookie sessions are not accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '403':
+          description: Personal API token is missing the library:write scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '404':
+          description: Collection not found for this account, or no game in it or that the caller can open has this slug.
           content:
             application/json:
               schema:
@@ -5638,6 +7464,47 @@ paths:
                 $ref: '#/components/schemas/ApiError'
       x-required-scopes:
       - library:write
+  /api/v1/account/games/{game_slug}/library/:
+    get:
+      summary: One game's place in the caller's library
+      description: Whether the caller starred the game and which of the caller's collections hold it, as the website's star and collection controls show. Any public archive game, public imported game, or the caller's own import.
+      operationId: getGameLibraryState
+      security:
+      - AccountApiToken: *id001
+      - MobileSessionToken: *id002
+      parameters:
+      - name: game_slug
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Star state and the collections that hold the game.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountGameLibraryState'
+        '401':
+          description: Missing, invalid, expired or revoked bearer token. Browser cookie sessions are not accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '403':
+          description: Personal API token is missing the library:read scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '404':
+          description: No game the caller can open has this slug.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+      x-required-scopes:
+      - library:read
   /api/v1/account/imported-games/:
     get:
       summary: List or search owned imported games
@@ -6565,6 +8432,14 @@ components:
             type: string
           mainline:
             $ref: '#/components/schemas/Mainline'
+          head_to_head:
+            anyOf:
+            - $ref: '#/components/schemas/HeadToHeadRecord'
+            - type: 'null'
+            description: Every MasterDB game between White and Black, from White's side; null when the names do not resolve to two players with a game together, or the record is unavailable. Absent from older servers.
+          archive_players:
+            $ref: '#/components/schemas/MasterGameArchivePlayers'
+            description: Absent from older servers.
         required:
         - pgn
         - mainline
@@ -6637,6 +8512,16 @@ components:
             - search_name
             type: object
           type: array
+        interpretation:
+          anyOf:
+          - $ref: '#/components/schemas/MasterSearchInterpretation'
+          - type: 'null'
+          description: null when q names several possible players (see player_choices). Absent from older servers.
+        head_to_head:
+          anyOf:
+          - $ref: '#/components/schemas/HeadToHeadRecord'
+          - type: 'null'
+          description: The pair's record over every game in q's years, as the website's score card shows it; player, side and result filters do not apply. null unless interpretation.kind is head_to_head and the record is available. Absent from older servers.
       required:
       - query
       - count
@@ -6661,6 +8546,119 @@ components:
             type: string
         type: object
       description: One newline-delimited JSON export record.
+    HeadToHeadRecord:
+      description: Two players' games against each other, the score card the website shows beside them.
+      properties:
+        player:
+          description: The resolved player whose wins and losses result counts.
+          type: string
+        opponent:
+          description: The resolved opponent.
+          type: string
+        since:
+          type:
+          - integer
+          - 'null'
+          description: First year counted; null when every year counts.
+        until:
+          type:
+          - integer
+          - 'null'
+          description: Last year counted; null when every year counts.
+        result:
+          $ref: '#/components/schemas/StatsRecord'
+          description: total, wins, losses and draws from player's side.
+        urls:
+          allOf:
+          - $ref: '#/components/schemas/ResourceLinks'
+          - required:
+            - api_games
+            - html_games
+            - html_stats
+          description: api_games and html_games list the counted games; html_stats is the website's all-years statistics for the pair.
+      required:
+      - player
+      - opponent
+      - since
+      - until
+      - result
+      - urls
+      type: object
+    MasterSearchInterpretation:
+      description: How the server read q, the line the website shows above the results.
+      properties:
+        kind:
+          description: 'player: one player''s games; head_to_head: two players'' games against each other; text: a match on players, events, sites and ECO codes.'
+          enum:
+          - player
+          - head_to_head
+          - text
+          type: string
+        player:
+          type:
+          - string
+          - 'null'
+          description: The resolved player; null for text.
+        opponent:
+          type:
+          - string
+          - 'null'
+          description: The resolved opponent; head_to_head only.
+        text:
+          type:
+          - string
+          - 'null'
+          description: The matched words; text only.
+        since:
+          type:
+          - integer
+          - 'null'
+          description: First year of q's year constraint; null without one.
+        until:
+          type:
+          - integer
+          - 'null'
+          description: Last year of q's year constraint; null without one.
+      required:
+      - kind
+      - player
+      - opponent
+      - text
+      - since
+      - until
+      type: object
+    MasterGameArchivePlayer:
+      allOf:
+      - $ref: '#/components/schemas/PlayerIdentity'
+      - properties:
+          urls:
+            allOf:
+            - $ref: '#/components/schemas/ResourceLinks'
+            - required:
+              - api_detail
+              - api_bio
+              - html_about
+        required:
+        - urls
+        type: object
+      description: A curated archive player whose exact name is on one side of the game.
+    MasterGameArchivePlayers:
+      description: Each side's curated archive player, as the website links its name to a biography.
+      properties:
+        white:
+          anyOf:
+          - $ref: '#/components/schemas/MasterGameArchivePlayer'
+          - type: 'null'
+          description: null unless White's name matches exactly one archive player.
+        black:
+          anyOf:
+          - $ref: '#/components/schemas/MasterGameArchivePlayer'
+          - type: 'null'
+          description: null unless Black's name matches exactly one archive player.
+      required:
+      - white
+      - black
+      type: object
     Mainline:
       description: Board-ready mainline moves parsed from a game's PGN.
       properties:
@@ -7581,6 +9579,95 @@ components:
           $ref: '#/components/schemas/PlayerIdentity'
         bio:
           $ref: '#/components/schemas/Biography'
+        archive_picks:
+          description: The about page's "From the archive" game picks, in editorial order; empty without an approved biography. Absent from older servers.
+          items:
+            description: One "From the archive" card on the player's about page.
+            properties:
+              slug:
+                description: Canonical game slug.
+                type: string
+              names:
+                description: Headline names, such as "Beliavsky – Psakhis".
+                type: string
+              qualifier:
+                description: The year, result or occasion shown under the names, in order.
+                items:
+                  properties:
+                    text:
+                      type: string
+                    is_result:
+                      description: True for a game result such as 1–0, which the page shows as a result.
+                      type: boolean
+                  required:
+                  - text
+                  - is_result
+                  type: object
+                type: array
+              sub:
+                description: The editor's caption; may be empty.
+                type: string
+              opening:
+                description: Opening family from the archive record; may be empty.
+                type: string
+              moves:
+                type:
+                - integer
+                - 'null'
+                description: Move count from the archive record; null when unknown.
+              urls:
+                allOf:
+                - $ref: '#/components/schemas/ResourceLinks'
+                - required:
+                  - api_detail
+                  - html
+            required:
+            - slug
+            - names
+            - qualifier
+            - sub
+            - opening
+            - moves
+            - urls
+            type: object
+          type: array
+        bibliography:
+          type:
+          - object
+          - 'null'
+          properties:
+            books:
+              description: Works the player wrote, co-wrote, edited or contributed to; translations and reprints share one entry. Empty when the sources document none.
+              items:
+                properties:
+                  id:
+                    type: string
+                  title:
+                    type: string
+                  year:
+                    description: Publication year as written; may be empty.
+                    type: string
+                  credit:
+                    description: The player's part in the work.
+                    type: string
+                  url:
+                    description: Bibliographic page; empty when evidence_url is the source.
+                    type: string
+                required:
+                - id
+                - title
+                - year
+                - credit
+                - url
+                type: object
+              type: array
+            evidence_url:
+              description: Bibliography source page; may be empty.
+              type: string
+          required:
+          - books
+          - evidence_url
+          description: The about page's Books section, published independently of biography approval; null while the bibliography is unavailable. Absent from older servers.
       required:
       - source
       - player
@@ -7705,8 +9792,14 @@ components:
                 type: string
               label:
                 type: string
+              slug:
+                description: Player or event slug; absent for the Daily Game and from older servers.
+                type: string
               url:
                 description: Site page for the player, event or Daily Game.
+                type: string
+              api_url:
+                description: 'API counterpart of url: the player''s games (listPublicGames with archive_player), the event''s about page (getCuratedEventAbout) or the Daily Game (getDailyGame). Absent from older servers.'
                 type: string
             required:
             - kind
@@ -7717,6 +9810,91 @@ components:
         portraits:
           $ref: '#/components/schemas/GamePlayerPortraits'
           description: 'Detail answers only: card portraits of the archive players this game names. A side without a known portrait is omitted; an empty object means neither has one, so no player search is needed.'
+        primary_annotation:
+          anyOf:
+          - description: The book notes the public game page shows, with the credit it prints.
+            properties:
+              source_label:
+                description: The book or source the notes come from.
+                type: string
+              source_url:
+                description: Source page for the notes; may be empty.
+                type: string
+              license:
+                description: License code of the notes.
+                type: string
+              license_name:
+                type: string
+              license_url:
+                description: License deed; empty for public domain.
+                type: string
+              adapted:
+                description: True when the license requires attribution; the page credits the notes as adapted.
+                type: boolean
+              is_public_domain:
+                type: boolean
+              intro:
+                description: Introduction before the move notes; may be empty.
+                type: string
+              notes:
+                description: Move notes in game order.
+                items:
+                  properties:
+                    move_no:
+                      description: The move number the note follows.
+                      type: integer
+                    side:
+                      description: The side whose move the note follows.
+                      enum:
+                      - w
+                      - b
+                      type: string
+                    san:
+                      type: string
+                    text:
+                      type: string
+                  required:
+                  - move_no
+                  - side
+                  - san
+                  - text
+                  type: object
+                type: array
+              book:
+                anyOf:
+                - description: The annotated book that publishes this game with these notes.
+                  properties:
+                    slug:
+                      description: Book slug for the annotated-book operations, such as getAnnotatedGame.
+                      type: string
+                    urls:
+                      allOf:
+                      - $ref: '#/components/schemas/ResourceLinks'
+                      - required:
+                        - api_game
+                        - html_game
+                        - api_games
+                        - html_games
+                  required:
+                  - slug
+                  - urls
+                  type: object
+                - type: 'null'
+                description: null when no published annotated book carries this game.
+            required:
+            - source_label
+            - source_url
+            - license
+            - license_name
+            - license_url
+            - adapted
+            - is_public_domain
+            - intro
+            - notes
+            - book
+            type: object
+          - type: 'null'
+          description: 'getPublicGame and getPlayerArchiveGame only: the book notes the game page shows, or null when the game has none. Absent from list rows, annotated-book answers and older servers.'
       required:
       - token
       - player
@@ -7935,6 +10113,38 @@ components:
             - series
             type: object
           type: array
+        event_order:
+          description: 'series requests only: event slugs in the order the series page lists them, which for a curated series is its editorial order. events stays oldest first. Absent from older servers.'
+          items:
+            type: string
+          type: array
+        sections:
+          description: 'series requests only: the series page''s named sections in page order; empty when the page has none, including Matches and Misc. Absent from older servers.'
+          items:
+            description: One named part of a curated series page, such as an era of title matches.
+            properties:
+              slug:
+                type: string
+              name:
+                type: string
+              years:
+                description: Year span as the page prints it; may be empty.
+                type: string
+              description:
+                type: string
+              event_slugs:
+                description: Member events in the order the page lists them.
+                items:
+                  type: string
+                type: array
+            required:
+            - slug
+            - name
+            - years
+            - description
+            - event_slugs
+            type: object
+          type: array
       required:
       - query
       type: object
@@ -8146,6 +10356,58 @@ components:
             - is_public_domain
             - note_count
             type: object
+          source_pages:
+            anyOf:
+            - description: The scanned book pages the website's annotated game page shows beside the moves.
+              properties:
+                pdf_url:
+                  description: The book's mapped-pages PDF, the same file as its urls.pdf.
+                  type: string
+                pages:
+                  description: The game's section of the book, one entry per PDF page in reading order.
+                  items:
+                    properties:
+                      page:
+                        description: Page number in the PDF at pdf_url.
+                        minimum: 1
+                        type: integer
+                      printed_page:
+                        description: Page number printed in the original edition.
+                        type: integer
+                      regions:
+                        description: This page's crops that hold the game, in reading order.
+                        items:
+                          description: One crop of a PDF page, as fractions of that page's width and height.
+                          properties:
+                            left:
+                              type: number
+                            top:
+                              type: number
+                            right:
+                              type: number
+                            bottom:
+                              type: number
+                          required:
+                          - left
+                          - top
+                          - right
+                          - bottom
+                          type: object
+                        minItems: 1
+                        type: array
+                    required:
+                    - page
+                    - printed_page
+                    - regions
+                    type: object
+                  minItems: 1
+                  type: array
+              required:
+              - pdf_url
+              - pages
+              type: object
+            - type: 'null'
+            description: 'Detail answers only: the game''s scanned source pages, exactly as the website game page draws them; null when the book maps no pages for this game. Older servers omit it.'
         required:
         - book
         - annotation
@@ -8210,6 +10472,15 @@ components:
           - urls
           - download
           type: object
+        header_q:
+          description: The header search applied, empty when none. Older servers ignore header_q and omit this echo, so a client that sends header_q and gets no echo has unfiltered results.
+          type: string
+        sort:
+          description: The order applied. Older servers ignore sort, answer in asc order and omit this echo.
+          enum:
+          - asc
+          - desc
+          type: string
         count:
           minimum: 0
           type: integer
@@ -9090,6 +11361,38 @@ components:
             type: object
           - type: 'null'
           description: The computed table, by kind; null when none can be derived.
+        archive_gap:
+          anyOf:
+          - description: Games of the event that were played but are lost to history.
+            properties:
+              archived:
+                description: Games the archive holds, each pairing counted once.
+                minimum: 0
+                type: integer
+              played:
+                type:
+                - integer
+                - 'null'
+                description: Documented games played; null when no total is established.
+              missing:
+                type:
+                - integer
+                - 'null'
+                description: played minus archived; null when played is null.
+              note:
+                description: Public note on the gap; may be empty.
+                type: string
+            required:
+            - archived
+            - played
+            - missing
+            - note
+            type: object
+          - type: 'null'
+          description: The page's "Incomplete record" notice; null when the archive is not known to be missing games. Absent from older servers.
+        collection_note:
+          description: The note a game collection's page prints; empty for other events and for a collection without one. Absent from older servers.
+          type: string
       required:
       - source
       - event
@@ -9582,6 +11885,36 @@ components:
             - entries
             type: object
           type: array
+        starters:
+          description: The guide's players to study first, in its order, each linking to their notable games. Absent from older servers.
+          items:
+            allOf:
+            - $ref: '#/components/schemas/PlayerIdentity'
+            - properties:
+                reason:
+                  description: Why the guide suggests this player.
+                  type: string
+                portrait:
+                  properties:
+                    image:
+                      type: string
+                    thumbnail:
+                      type: string
+                  type: object
+                  description: Absent when the player has no portrait.
+                urls:
+                  allOf:
+                  - $ref: '#/components/schemas/ResourceLinks'
+                  - required:
+                    - api_detail
+                    - api_notable_games
+                    - html_notable
+              required:
+              - reason
+              - urls
+              type: object
+            description: One of the guide's "Players to study first".
+          type: array
         urls:
           $ref: '#/components/schemas/ResourceLinks'
       required:
@@ -9685,8 +12018,14 @@ components:
                 type: string
               label:
                 type: string
+              slug:
+                description: Player or event slug; absent for the Daily Game and from older servers.
+                type: string
               url:
                 description: Site page for the player, event or Daily Game.
+                type: string
+              api_url:
+                description: 'API counterpart of url: the player''s games (listPublicGames with archive_player), the event''s about page (getCuratedEventAbout) or the Daily Game (getDailyGame). Absent from older servers.'
                 type: string
             required:
             - kind
@@ -9818,6 +12157,250 @@ components:
       - has_previous
       - results
       - html_urls
+      type: object
+    SiteSearchHit:
+      description: One match in the site's own content, as the /search/?kind=site page lists it.
+      properties:
+        kind:
+          description: page, player (a biography), event (an event history) or update (a What's New post). New kinds may be added.
+          type: string
+        kind_label:
+          description: The group the site shows the match under, such as Pages.
+          type: string
+        title:
+          type: string
+        title_highlights:
+          items:
+            items:
+              type: integer
+            maxItems: 2
+            minItems: 2
+            type: array
+          type: array
+        heading:
+          description: The matching section heading; empty for the page itself.
+          type: string
+        heading_highlights:
+          items:
+            items:
+              type: integer
+            maxItems: 2
+            minItems: 2
+            type: array
+          type: array
+        context:
+          description: A page's navigation group, a biography's life years, an event's dates and place, or a post's date.
+          type: string
+        snippet:
+          description: Plain text quoted around the first matched word; empty when only the title matched. Escape it before inserting it into HTML.
+          type: string
+        snippet_highlights:
+          items:
+            items:
+              type: integer
+            maxItems: 2
+            minItems: 2
+            type: array
+          type: array
+        urls:
+          $ref: '#/components/schemas/ResourceLinks'
+          description: 'html is the page, with the section anchor. api_detail is present for a biography, event history or What''s New post: the API resource that publishes the matched text.'
+      required:
+      - kind
+      - kind_label
+      - title
+      - title_highlights
+      - heading
+      - heading_highlights
+      - context
+      - snippet
+      - snippet_highlights
+      - urls
+      type: object
+    SiteContentSearchPage:
+      description: One page of matches in the site's own pages, biographies, event histories and posts.
+      properties:
+        source:
+          const: public
+        mode:
+          const: site
+        query:
+          type: string
+        kind:
+          const: site
+        count:
+          description: Matching pages; each counts once.
+          minimum: 0
+          type: integer
+        page:
+          minimum: 1
+          type: integer
+        page_size:
+          minimum: 1
+          type: integer
+        page_count:
+          minimum: 1
+          type: integer
+        has_next:
+          type: boolean
+        has_previous:
+          type: boolean
+        results:
+          description: Best match first. A page appears once, at its best-matching section.
+          items:
+            $ref: '#/components/schemas/SiteSearchHit'
+          type: array
+        html_urls:
+          $ref: '#/components/schemas/ResourceLinks'
+      required:
+      - source
+      - mode
+      - query
+      - kind
+      - count
+      - page
+      - page_size
+      - page_count
+      - has_next
+      - has_previous
+      - results
+      - html_urls
+      type: object
+    SiteUpdatePhoto:
+      description: The image a post shows, with its alt text and, for a gallery photograph, its credit.
+      properties:
+        kind:
+          description: gallery for a historical photograph from the gallery; brand for the Classic Chess knight, which illustrates feature and apps posts.
+          enum:
+          - gallery
+          - brand
+          type: string
+        alt_text:
+          type: string
+        image:
+          properties:
+            url:
+              format: uri
+              type: string
+            width:
+              type: integer
+            height:
+              type: integer
+          required:
+          - url
+          - width
+          - height
+          type: object
+        gallery_photo:
+          anyOf:
+          - $ref: '#/components/schemas/GalleryPhoto'
+          - type: 'null'
+          description: The photograph's gallery record with its source, license and credit. Honor attribution.required and usage_terms when reusing it. Null for the brand image, the site's own artwork, which carries no credit.
+      required:
+      - kind
+      - alt_text
+      - image
+      - gallery_photo
+      type: object
+    SiteUpdatePost:
+      description: One published What's New post, with every field its page shows.
+      properties:
+        id:
+          description: 'Stable post ID and URL slug: the post date followed by a slug.'
+          type: string
+        date:
+          description: Publication date in the site timezone.
+          format: date
+          type: string
+        category:
+          description: feature, players, events, annotated, gallery or apps.
+          type: string
+        category_label:
+          type: string
+        title:
+          type: string
+        summary:
+          type: string
+        body:
+          description: Plain-text paragraphs in order, as the post page shows them. They hold no HTML or markup; escape them before inserting them into HTML.
+          items:
+            type: string
+          type: array
+        link:
+          properties:
+            url:
+              description: Site path the post sends readers to, such as /gallery/.
+              type: string
+            label:
+              type: string
+          required:
+          - url
+          - label
+          type: object
+        photo:
+          $ref: '#/components/schemas/SiteUpdatePhoto'
+        urls:
+          $ref: '#/components/schemas/ResourceLinks'
+      required:
+      - id
+      - date
+      - category
+      - category_label
+      - title
+      - summary
+      - body
+      - link
+      - photo
+      - urls
+      type: object
+    SiteUpdatePage:
+      properties:
+        source:
+          const: public
+        count:
+          minimum: 0
+          type: integer
+        page:
+          minimum: 1
+          type: integer
+        page_size:
+          maximum: 100
+          minimum: 1
+          type: integer
+        page_count:
+          minimum: 1
+          type: integer
+        has_next:
+          type: boolean
+        has_previous:
+          type: boolean
+        results:
+          description: Newest first.
+          items:
+            $ref: '#/components/schemas/SiteUpdatePost'
+          type: array
+        urls:
+          $ref: '#/components/schemas/ResourceLinks'
+      required:
+      - source
+      - count
+      - page
+      - page_size
+      - page_count
+      - has_next
+      - has_previous
+      - results
+      - urls
+      type: object
+    SiteUpdateDetail:
+      properties:
+        source:
+          const: public
+        post:
+          $ref: '#/components/schemas/SiteUpdatePost'
+      required:
+      - source
+      - post
       type: object
     TablebaseMove:
       properties:
@@ -10509,6 +13092,25 @@ components:
       - sample_label
       - year_filter
       type: object
+    ResolvedGameLink:
+      description: A provider game for one transient analysis session; nothing is saved.
+      properties:
+        pgn:
+          description: The game as PGN, validated and size-bounded.
+          type: string
+        orientation:
+          type:
+          - string
+          - 'null'
+          enum:
+          - white
+          - black
+          - null
+          description: The side a Lichess /white or /black link asks to view from; otherwise null.
+      required:
+      - pgn
+      - orientation
+      type: object
     AccountGame:
       properties:
         token:
@@ -10719,6 +13321,474 @@ components:
       - username
       - email
       - email_verified
+      type: object
+    AccountProfile:
+      allOf:
+      - $ref: '#/components/schemas/AccountSummary'
+      - properties:
+          has_password:
+            description: False for an account that signs in only with Google or Lichess.
+            type: boolean
+          two_factor:
+            properties:
+              enabled:
+                description: 'Whether sign-in asks for a second step: an authenticator app or a security key.'
+                type: boolean
+              authenticator_enabled:
+                type: boolean
+              security_key_count:
+                minimum: 0
+                type: integer
+              preferred_method:
+                type:
+                - string
+                - 'null'
+                enum:
+                - totp
+                - security_key
+                - null
+                description: The second step sign-in asks for first; null while two-step sign-in is off.
+            required:
+            - enabled
+            - authenticator_enabled
+            - security_key_count
+            - preferred_method
+            type: object
+          providers:
+            properties:
+              google:
+                properties:
+                  connected:
+                    type: boolean
+                  email:
+                    type:
+                    - string
+                    - 'null'
+                    description: The linked Google address; null when not connected.
+                required:
+                - connected
+                - email
+                type: object
+              lichess:
+                properties:
+                  connected:
+                    type: boolean
+                  username:
+                    type:
+                    - string
+                    - 'null'
+                    description: The linked Lichess username; null when not connected.
+                  studies_authorized:
+                    description: Whether the Lichess Studies grant is active, so Lichess studies can be imported.
+                    type: boolean
+                required:
+                - connected
+                - username
+                - studies_authorized
+                type: object
+            required:
+            - google
+            - lichess
+            type: object
+          entitlements:
+            properties:
+              speech_synthesis:
+                description: Move narration in the game viewer.
+                type: boolean
+              patreon_index:
+                type: boolean
+              debug:
+                type: boolean
+            required:
+            - speech_synthesis
+            - patreon_index
+            - debug
+            type: object
+          credential:
+            description: The credential that made this request. Its secret, hash and prefix are never returned.
+            properties:
+              kind:
+                enum:
+                - personal_token
+                - device_session
+                - oauth_connection
+                type: string
+              name:
+                type: string
+              scopes:
+                description: The scopes a personal token or OAuth connection carries.
+                items:
+                  type: string
+                type: array
+              created_at:
+                format: date-time
+                type: string
+              expires_at:
+                type:
+                - string
+                - 'null'
+                description: null when the token never expires.
+                format: date-time
+            required:
+            - kind
+            - name
+            - created_at
+            - expires_at
+            type: object
+        required:
+        - has_password
+        - two_factor
+        - providers
+        - entitlements
+        - credential
+        type: object
+      description: |-
+        The account summary with the security, linked-provider and entitlement state Settings shows.
+
+        Read-only: email, password, two-step sign-in and security keys change on the
+        website, or in the app after a device confirmation.
+    AccountPreferences:
+      allOf:
+      - description: Website preferences. Sound and speech are the website's own; the Android app keeps separate ones.
+        properties:
+          disable_animations:
+            type: boolean
+          reading_font:
+            description: A key from catalogs.reading_fonts.
+            type: string
+          board_theme:
+            description: A key from catalogs.board_themes.
+            type: string
+          piece_set:
+            description: A key from catalogs.piece_sets.
+            type: string
+          board_input_mode:
+            description: A key from catalogs.board_input_modes.
+            type: string
+          keyboard_move_entry:
+            description: Type moves into the board with the keyboard.
+            type: boolean
+          move_tree_theme:
+            description: A key from catalogs.move_tree_themes.
+            type: string
+          annotation_color_normal:
+            description: Board drawing color without a modifier key.
+            pattern: ^#[0-9A-F]{6}$
+            type: string
+          annotation_color_ctrl:
+            pattern: ^#[0-9A-F]{6}$
+            type: string
+          annotation_color_alt:
+            pattern: ^#[0-9A-F]{6}$
+            type: string
+          annotation_color_ctrl_alt:
+            pattern: ^#[0-9A-F]{6}$
+            type: string
+          autoplay_seconds:
+            maximum: 180
+            minimum: 1
+            type: integer
+          engine_depth:
+            description: A value from catalogs.engine_depths.
+            type: integer
+          engine_lines:
+            maximum: 5
+            minimum: 1
+            type: integer
+          engine_eval_bar:
+            type: boolean
+          engine_enabled:
+            type: boolean
+          sound_set:
+            description: A key from catalogs.sound_sets.
+            type: string
+          sound_volume:
+            maximum: 100
+            minimum: 0
+            type: integer
+          speech_enabled:
+            type: boolean
+          speech_level:
+            maximum: 10
+            minimum: 1
+            multipleOf: 0.5
+            type: number
+          speech_voice:
+            description: Empty for the browser default voice.
+            type: string
+          viewer_layouts:
+            $ref: '#/components/schemas/ViewerLayoutState'
+          viewer_keybindings:
+            additionalProperties:
+              items:
+                type: string
+              type: array
+            description: Every editable game-viewer command with its keys.
+            type: object
+        required:
+        - disable_animations
+        - reading_font
+        - board_theme
+        - piece_set
+        - board_input_mode
+        - keyboard_move_entry
+        - move_tree_theme
+        - annotation_color_normal
+        - annotation_color_ctrl
+        - annotation_color_alt
+        - annotation_color_ctrl_alt
+        - autoplay_seconds
+        - engine_depth
+        - engine_lines
+        - engine_eval_bar
+        - engine_enabled
+        - sound_set
+        - sound_volume
+        - speech_enabled
+        - speech_level
+        - speech_voice
+        - viewer_layouts
+        - viewer_keybindings
+        type: object
+      - properties:
+          speech_available:
+            description: Whether move narration is available to this account.
+            type: boolean
+          catalogs:
+            description: The choices the website's settings page and board pickers offer.
+            properties:
+              board_themes:
+                items:
+                  allOf:
+                  - properties:
+                      key:
+                        type: string
+                      label:
+                        type: string
+                    required:
+                    - key
+                    - label
+                    type: object
+                  - properties:
+                      light:
+                        description: Light-square CSS color.
+                        type: string
+                      dark:
+                        description: Dark-square CSS color.
+                        type: string
+                    required:
+                    - light
+                    - dark
+                    type: object
+                type: array
+              piece_sets:
+                items:
+                  allOf:
+                  - properties:
+                      key:
+                        type: string
+                      label:
+                        type: string
+                    required:
+                    - key
+                    - label
+                    type: object
+                  - properties:
+                      preview:
+                        description: Static-file path of the set's white knight SVG.
+                        type: string
+                    required:
+                    - preview
+                    type: object
+                type: array
+              sound_sets:
+                items:
+                  properties:
+                    key:
+                      type: string
+                    label:
+                      type: string
+                  required:
+                  - key
+                  - label
+                  type: object
+                type: array
+              reading_fonts:
+                items:
+                  properties:
+                    key:
+                      type: string
+                    label:
+                      type: string
+                  required:
+                  - key
+                  - label
+                  type: object
+                type: array
+              board_input_modes:
+                items:
+                  properties:
+                    key:
+                      type: string
+                    label:
+                      type: string
+                  required:
+                  - key
+                  - label
+                  type: object
+                type: array
+              move_tree_themes:
+                items:
+                  properties:
+                    key:
+                      type: string
+                    label:
+                      type: string
+                  required:
+                  - key
+                  - label
+                  type: object
+                type: array
+              engine_depths:
+                items:
+                  type: integer
+                type: array
+            required:
+            - board_themes
+            - piece_sets
+            - sound_sets
+            - reading_fonts
+            - board_input_modes
+            - move_tree_themes
+            - engine_depths
+            type: object
+        required:
+        - speech_available
+        - catalogs
+        type: object
+    ViewerLayoutState:
+      additionalProperties: false
+      description: The game viewer's saved layouts, as the website's layout editor stores them.
+      properties:
+        version:
+          const: 1
+        active:
+          description: default, lichess or the id of a preset.
+          type: string
+        presets:
+          items:
+            additionalProperties: false
+            properties:
+              id:
+                pattern: ^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$
+                type: string
+              name:
+                maxLength: 48
+                minLength: 1
+                type: string
+              canvas:
+                additionalProperties: false
+                properties:
+                  width:
+                    maximum: 7680
+                    minimum: 720
+                    type: integer
+                  height:
+                    maximum: 4320
+                    minimum: 480
+                    type: integer
+                required:
+                - width
+                - height
+                type: object
+              panels:
+                additionalProperties:
+                  additionalProperties: false
+                  properties:
+                    x:
+                      minimum: 0
+                      type: integer
+                    y:
+                      minimum: 0
+                      type: integer
+                    width:
+                      minimum: 1
+                      type: integer
+                    height:
+                      minimum: 1
+                      type: integer
+                    z:
+                      description: Stacking order, 1 at the bottom.
+                      minimum: 1
+                      type: integer
+                  required:
+                  - x
+                  - y
+                  - width
+                  - height
+                  - z
+                  type: object
+                description: board and moves; the board panel is 72 pixels taller than wide.
+                type: object
+            required:
+            - id
+            - name
+            - canvas
+            - panels
+            type: object
+          type: array
+      required:
+      - version
+      - active
+      - presets
+      type: object
+    AccountGameLibraryState:
+      properties:
+        slug:
+          type: string
+        starred:
+          type: boolean
+        collections:
+          description: Your collections that hold this game, by name.
+          items:
+            properties:
+              id:
+                description: Collection ID.
+                type: integer
+              name:
+                type: string
+              collection_item_id:
+                type: integer
+              urls:
+                $ref: '#/components/schemas/ResourceLinks'
+            required:
+            - id
+            - name
+            - collection_item_id
+            - urls
+            type: object
+          type: array
+      required:
+      - slug
+      - starred
+      - collections
+      type: object
+    AccountCollectionGameRemoved:
+      properties:
+        collection_id:
+          type: integer
+        slug:
+          type: string
+        changed:
+          description: False when the game was not in the collection.
+          type: boolean
+        message:
+          type: string
+      required:
+      - collection_id
+      - slug
+      - changed
+      - message
       type: object
     AccountMessage:
       properties:
@@ -11529,6 +14599,12 @@ components:
           description: owner or the collaborator role for members; null for a Notebook opened only through its visibility.
         can_export:
           type: boolean
+        can_edit:
+          description: 'Owner, manager or editor: may change folders, chapters and chapter content.'
+          type: boolean
+        can_manage:
+          description: 'Owner or manager: may rename the Notebook and change settings, collaborators and share links.'
+          type: boolean
         chapter_count:
           type: integer
         updated_at:
@@ -11543,6 +14619,8 @@ components:
       - allow_public_exports
       - role
       - can_export
+      - can_edit
+      - can_manage
       - chapter_count
       - updated_at
       - urls
@@ -11565,54 +14643,169 @@ components:
           $ref: '#/components/schemas/AccountNotebook'
         sections:
           items:
-            properties:
-              id:
-                type: integer
-              parent_id:
-                type:
-                - integer
-                - 'null'
-              title:
-                type: string
-              sort_order:
-                type: integer
-            required:
-            - id
-            - parent_id
-            - title
-            - sort_order
-            type: object
+            $ref: '#/components/schemas/AccountNotebookDetailSectionsItem'
           type: array
         chapters:
           items:
-            properties:
-              id:
-                type: integer
-              title:
-                type: string
-              section_id:
-                type:
-                - integer
-                - 'null'
-              sort_order:
-                type: integer
-              updated_at:
-                type: string
-              urls:
-                $ref: '#/components/schemas/ResourceLinks'
-            required:
-            - id
-            - title
-            - section_id
-            - sort_order
-            - updated_at
-            - urls
-            type: object
+            $ref: '#/components/schemas/AccountNotebookDetailChaptersItem'
           type: array
       required:
       - notebook
       - sections
       - chapters
+      type: object
+    AccountNotebookDetailSectionsItem:
+      properties:
+        id:
+          type: integer
+        parent_id:
+          type:
+          - integer
+          - 'null'
+        title:
+          type: string
+        sort_order:
+          type: integer
+      required:
+      - id
+      - parent_id
+      - title
+      - sort_order
+      type: object
+    AccountNotebookDetailChaptersItem:
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        section_id:
+          type:
+          - integer
+          - 'null'
+        sort_order:
+          type: integer
+        content_version:
+          description: Send it back with a chapter save. Every content save and rename raises it.
+          type: integer
+        updated_at:
+          type: string
+        urls:
+          $ref: '#/components/schemas/ResourceLinks'
+      required:
+      - id
+      - title
+      - section_id
+      - sort_order
+      - content_version
+      - updated_at
+      - urls
+      type: object
+    AccountNotebookChapterDetail:
+      properties:
+        chapter:
+          $ref: '#/components/schemas/AccountNotebookDetailChaptersItem'
+        pgn:
+          description: The chapter PGN at chapter.content_version.
+          type: string
+      required:
+      - chapter
+      - pgn
+      type: object
+    AccountNotebookDeleted:
+      properties:
+        deleted:
+          description: False only when the removed item was already gone.
+          type: boolean
+      required:
+      - deleted
+      type: object
+    AccountNotebookSectionDeletion:
+      properties:
+        deleted:
+          type: boolean
+        section_ids:
+          description: The folder and every folder nested in it.
+          items:
+            type: integer
+          type: array
+        chapter_ids:
+          description: Every chapter those folders held.
+          items:
+            type: integer
+          type: array
+      required:
+      - deleted
+      - section_ids
+      - chapter_ids
+      type: object
+    AccountNotebookCollaborator:
+      properties:
+        id:
+          type: integer
+        username:
+          type: string
+        role:
+          description: viewer, commenter, editor or manager.
+          type: string
+        can_present_live:
+          type: boolean
+      required:
+      - id
+      - username
+      - role
+      - can_present_live
+      type: object
+    AccountNotebookSettings:
+      properties:
+        notebook:
+          $ref: '#/components/schemas/AccountNotebook'
+        owner_username:
+          type: string
+        is_owner:
+          type: boolean
+        collaborators:
+          items:
+            $ref: '#/components/schemas/AccountNotebookCollaborator'
+          type: array
+        choices:
+          properties:
+            visibility:
+              items:
+                type: string
+              type: array
+            roles:
+              items:
+                type: string
+              type: array
+          required:
+          - visibility
+          - roles
+          type: object
+      required:
+      - notebook
+      - owner_username
+      - is_owner
+      - collaborators
+      - choices
+      type: object
+    AccountNotebookShare:
+      properties:
+        active:
+          type: boolean
+        scope:
+          type:
+          - string
+          - 'null'
+          description: notebook or chapter while a link is active.
+        url:
+          type:
+          - string
+          - 'null'
+          description: Read-only link that anyone holding it can open until it is revoked; keep it private.
+      required:
+      - active
+      - scope
+      - url
       type: object
     NotebookAnnotationSearchLinks:
       properties:
@@ -11698,6 +14891,49 @@ components:
       - cursor
       - complete
       type: object
+    GymBotVersion:
+      description: One set of a bot's trained weights, as the bot's card and info dialog describe it.
+      properties:
+        key:
+          description: Send as version when starting a game.
+          example: v5
+          type: string
+        label:
+          description: The short name in the version menu, for example v5.
+          type: string
+        title:
+          description: A few words after the label in the version menu.
+          type: string
+        summary:
+          description: What the version trained on, from the bot's info dialog.
+          type: string
+        move_match:
+          description: Share of the master's own moves the bot plays in held-out games, from 0 to 1. The card shows it as a whole percent followed by the bot's match_unit.
+          maximum: 1
+          minimum: 0
+          type: number
+        masters:
+          description: Masters whose games the version trained on.
+          minimum: 0
+          type: integer
+        study_games:
+          description: Those masters' games it trained on.
+          minimum: 0
+          type: integer
+        own_games:
+          description: The featured master's own games it trained on, counted in the bot's own_games_unit. 0 when the bot has none; the card then leaves the figure out.
+          minimum: 0
+          type: integer
+      required:
+      - key
+      - label
+      - title
+      - summary
+      - move_match
+      - masters
+      - study_games
+      - own_games
+      type: object
     GymBot:
       properties:
         key:
@@ -11705,6 +14941,20 @@ components:
         name:
           type: string
         about:
+          type: string
+        versions:
+          description: Newest first, as the version menu lists them.
+          items:
+            $ref: '#/components/schemas/GymBotVersion'
+          type: array
+        default_version:
+          description: The version key a new game plays when it names none.
+          type: string
+        match_unit:
+          description: What move_match counts, as the card words it, for example OF MORPHY'S MOVES MATCHED.
+          type: string
+        own_games_unit:
+          description: What own_games counts, as the card words it, for example MORPHY GAMES.
           type: string
       required:
       - key
@@ -11748,6 +14998,9 @@ components:
           description: Seconds added per move for time=custom.
           minimum: 0
           type: integer
+        version:
+          description: A version key from the bot's versions, for example v4. Omitted, the game plays the bot's default_version; an unknown key is refused with invalid_version.
+          type: string
       type: object
     GymClock:
       properties:
@@ -11778,6 +15031,13 @@ components:
         bot:
           type: string
         bot_name:
+          description: The bot alone; bot_version_name adds the version.
+          type: string
+        bot_version:
+          description: Key of the bot version the game plays, as in the bot's versions. A game of a retired version reports the default it continues with. Absent when the bot is no longer offered.
+          type: string
+        bot_version_name:
+          description: The bot with the version the game plays, for example Romantic Era Bot v4, as the website's games lists show it on hover.
           type: string
         player:
           description: Username of the account that played the game.
@@ -11882,6 +15142,13 @@ components:
         bot:
           type: string
         bot_name:
+          description: The bot with the version the game plays, for example Romantic Era Bot v4.
+          type: string
+        bot_version:
+          description: Key of the bot version the game plays, as in the bot's versions. A game of a retired version reports the default it continues with. Absent when the bot is no longer offered.
+          type: string
+        bot_version_name:
+          description: The same name as bot_name, under the games lists' field name.
           type: string
         player:
           type: string
@@ -11978,6 +15245,91 @@ components:
       - ok
       - id
       - aborted
+      type: object
+    GymSharedGame:
+      description: |-
+        A game as its signed link shows it to anyone who holds the link.
+
+        The link's page is the analysis board with the game loaded, turned to the
+        member's side. The player's own controls (clocks, take-backs, abort) and
+        the account's API routes are not part of it.
+      properties:
+        id:
+          type: integer
+        bot:
+          type: string
+        bot_version:
+          description: Key of the bot version the game plays, as in the bot's versions.
+          type: string
+        bot_name:
+          description: The bot with the version the game plays, for example Romantic Era Bot v4.
+          type: string
+        player:
+          description: Username of the member who played the bot, as the PGN names them.
+          type: string
+        human_color:
+          description: The member's side; the board opens from it.
+          enum:
+          - white
+          - black
+          type: string
+        moves:
+          description: UCI moves from the starting position.
+          items:
+            type: string
+          type: array
+        sans:
+          items:
+            type: string
+          type: array
+        fen:
+          description: The position after the last move.
+          type: string
+        ply:
+          type: integer
+        result:
+          description: 1-0, 0-1, 1/2-1/2 or * while in play.
+          type: string
+        finished:
+          type: boolean
+        termination:
+          type: string
+        termination_label:
+          type: string
+        opening:
+          type: string
+        time_control:
+          description: minutes+increment, or empty for an unlimited game.
+          type: string
+        date:
+          description: The day the game started, in UTC, as the PGN Date gives it.
+          format: date
+          type: string
+        pgn:
+          description: The game's PGN, as the link's analysis board loads it and urls.pgn downloads it.
+          type: string
+        urls:
+          $ref: '#/components/schemas/ResourceLinks'
+      required:
+      - id
+      - bot
+      - bot_version
+      - bot_name
+      - player
+      - human_color
+      - moves
+      - sans
+      - fen
+      - ply
+      - result
+      - finished
+      - termination
+      - termination_label
+      - opening
+      - time_control
+      - date
+      - pgn
+      - urls
       type: object
     PuzzleSummary:
       properties:
@@ -12114,6 +15466,9 @@ components:
                 description: A PGN tag name such as Event, Date, White or WhiteElo.
                 type: string
               value:
+                type: string
+              url:
+                description: 'The website page the row''s value links to, as the trainer''s Game info shows it: a study player''s about page on White or Black, or the event''s about page on Event. Empty when the row links nowhere.'
                 type: string
             required:
             - label

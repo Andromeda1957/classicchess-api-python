@@ -101,6 +101,130 @@ class CapabilityParityTests(TestCase):
                 self.assertEqual(call(), {'source': 'public'})
                 self.assertEqual(wire.call_args.args[0], 'https://classicchess.com' + path)
 
+    def test_api_gap_reads_send_the_contract_paths_and_filters(self):
+        api = ClassicChessClient()
+        fen = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1'
+        fen_query = 'fen=rnbqkbnr%2Fpppppppp%2F8%2F8%2F4P3%2F8%2FPPPP1PPP%2FRNBQKBNR+b+KQkq+-+0+1'
+        cases = [
+            (lambda: api.chess_today(), '/api/v1/public/chess-today/'),
+            (lambda: api.chess_today_on_date(2, 29), '/api/v1/public/chess-today/2/29/'),
+            (lambda: api.study_themes(), '/api/v1/public/themes/'),
+            (lambda: api.site_updates(page=2, page_size=10), '/api/v1/public/site-updates/?page=2&page_size=10'),
+            (lambda: api.site_update('2026-11-12-gallery'), '/api/v1/public/site-updates/2026-11-12-gallery/'),
+            (lambda: api.site_search('najdorf', kind='site', page=2),
+             '/api/v1/public/search/?q=najdorf&kind=site&page=2'),
+            (lambda: api.shared_gym_game('42.Ab_c-1'), '/api/v1/public/gym/games/42.Ab_c-1/'),
+            (lambda: api.lichess_explorer_game('AbCd1234'), '/api/v1/opening-explorer/lichess/games/AbCd1234/'),
+            (lambda: api.player_explorer('Tal', fen=fen, color='white', result='win', page=2, since=1960, until=1970),
+             '/api/v1/opening-explorer/player/?player=Tal&' + fen_query
+             + '&color=white&result=win&page=2&since=1960&until=1970'),
+            (lambda: api.explorer(play='e2e4', since=1950, until=1960),
+             '/api/v1/opening-explorer/?play=e2e4&moves=12&since=1950&until=1960'),
+            (lambda: api.lichess_explorer(player='DrNykterstein', since=2020, until=2021),
+             '/api/v1/opening-explorer/lichess/?player=DrNykterstein&color=both&result=all&since=2020&until=2021'),
+            (lambda: api.public_games(archive_player='mikhail-tal', theme=['king-attack', 'sacrifice'], eco='B9',
+                                      result='1/2-1/2', annotation_q='sacrifice', annotation_author='Tal',
+                                      annotation_book='Life'),
+             '/api/v1/public/games/?archive_player=mikhail-tal&sort=asc&theme=king-attack%2Csacrifice&eco=B9'
+             '&result=1%2F2-1%2F2&annotation_q=sacrifice&annotation_author=Tal&annotation_book=Life'
+             '&page=1&page_size=50'),
+            (lambda: api.annotated_games('my-system', q='blockade', author='Nimzowitsch', header_q='Riga',
+                                         sort='desc', page=2),
+             '/api/v1/annotated/books/my-system/games/?q=blockade&author=Nimzowitsch&header_q=Riga&sort=desc'
+             '&page=2&page_size=50'),
+        ]
+        for call, path in cases:
+            with self.subTest(path=path), patch.object(
+                api, 'fetch_url', return_value=(b'{"source": "public"}', 'application/json'),
+            ) as wire:
+                self.assertEqual(call(), {'source': 'public'})
+                self.assertEqual(wire.call_args.args[0], 'https://classicchess.com' + path)
+
+    def test_game_filters_reach_iteration_and_query_exports(self):
+        api = ClassicChessClient()
+        with patch.object(api, 'fetch_json', return_value={'results': [], 'next': None}) as fetch:
+            list(api.iterate_public_games(theme='sacrifice', result='0-1', limit=1))
+            list(api.iterate_annotated_games('my-system', header_q='Riga', sort='desc'))
+        self.assertEqual([call.args[0] for call in fetch.call_args_list], [
+            'https://classicchess.com/api/v1/public/games/?sort=asc&theme=sacrifice&result=0-1&page=1&page_size=50',
+            'https://classicchess.com/api/v1/annotated/books/my-system/games/?header_q=Riga&sort=desc'
+            '&page=1&page_size=50',
+        ])
+        with patch.object(api, 'fetch_url', return_value=(b'[Event "x"]', 'application/x-chess-pgn')) as wire:
+            api.export_public_games(query='tal', eco='B', annotation_book='Life')
+        self.assertEqual(wire.call_args.args[0], 'https://classicchess.com/api/v1/public/games/export/'
+                         '?format=pgn&sort=asc&eco=B&annotation_book=Life&q=tal')
+
+    def test_token_exports_post_one_token_per_line(self):
+        api = ClassicChessClient(api_token='fixture')
+        cases = [
+            (lambda: api.export_public_games_by_token(
+                ['tal-vs-larsen-1965', 'https://classicchess.com/mikhail-tal/games/tal-vs-x/'],
+                sort='desc', format='ndjson', pgn_in_json=False),
+             '/api/v1/public/games/export/?format=ndjson&sort=desc&pgnInJson=false',
+             b'tal-vs-larsen-1965\nmikhail-tal/tal-vs-x'),
+            (lambda: api.export_master_games_by_token(
+                ['g1a2-0123456789ab', 'https://classicchess.com/games/g3b4-0123456789ab/']),
+             '/api/v1/games/export/?format=pgn', b'g1a2-0123456789ab\ng3b4-0123456789ab'),
+        ]
+        for call, path, body in cases:
+            with self.subTest(path=path), patch.object(api, 'fetch_url', return_value=(b'1. e4 *', 'text/plain')) as wire:
+                self.assertEqual(call(), '1. e4 *')
+                self.assertEqual(wire.call_args.args[0], 'https://classicchess.com' + path)
+                self.assertEqual((wire.call_args.kwargs['method'], wire.call_args.kwargs['body']), ('POST', body))
+                self.assertEqual(wire.call_args.kwargs['headers'], {'Content-Type': 'text/plain; charset=utf-8'})
+
+    def test_game_link_and_book_package_send_no_account_credentials(self):
+        api = ClassicChessClient(api_token='fixture')
+        link = 'https://lichess.org/abcdefgh/black'
+        with patch.object(api, 'fetch_url', return_value=(b'{"pgn": "1. e4 *", "orientation": "black"}',
+                                                          'application/json')) as wire:
+            self.assertEqual(api.resolve_game_link(link), {'pgn': '1. e4 *', 'orientation': 'black'})
+        self.assertEqual(wire.call_args.args[0], 'https://classicchess.com/api/v1/analysis/game-link/')
+        self.assertEqual(wire.call_args.kwargs['method'], 'POST')
+        self.assertEqual(json.loads(wire.call_args.kwargs['body']), {'url': link})
+        self.assertEqual(wire.call_args.kwargs['headers'],
+                         {'Accept': 'application/json', 'Content-Type': 'application/json'})
+        package = b'CCNB\0\3\xff'
+        with patch.object(api, 'fetch_url', return_value=(package, 'application/vnd.classicchess.notebook')) as wire:
+            self.assertEqual(api.annotated_book_ccnb('my-system', ccnb_format=3), package)
+        self.assertEqual(wire.call_args.args[0], 'https://classicchess.com/api/v1/annotated/books/my-system/ccnb/')
+        self.assertEqual(wire.call_args.kwargs['headers'],
+                         {'Accept': 'application/vnd.classicchess.notebook', 'CCNB-Format': '3'})
+        self.assertFalse(wire.call_args.kwargs['follow_redirects'])
+        with patch.object(api, 'fetch_url', return_value=(b'<html>', 'text/html')), self.assertRaises(ApiError):
+            api.annotated_book_ccnb('my-system')
+
+    def test_api_gap_reads_reject_unsafe_input_before_any_request(self):
+        api = ClassicChessClient()
+        calls = [
+            lambda: api.chess_today_on_date(13, 1), lambda: api.chess_today_on_date(0, 1),
+            lambda: api.chess_today_on_date(True, 1), lambda: api.chess_today_on_date('2', 29),
+            lambda: api.chess_today_on_date(2, 32),
+            lambda: api.site_update('../account/me'), lambda: api.site_updates(page_size=101),
+            lambda: api.site_updates(page=0),
+            lambda: api.shared_gym_game('42'), lambda: api.shared_gym_game('../me'),
+            lambda: api.shared_gym_game('42.abc/../x'),
+            lambda: api.lichess_explorer_game('abc'), lambda: api.lichess_explorer_game('abcdefg/'),
+            lambda: api.player_explorer('Tal', color='red'), lambda: api.player_explorer('Tal', page=0),
+            lambda: api.player_explorer('x' * 81),
+            lambda: api.public_games(result='win'), lambda: api.public_games(theme=['sacrifice', 3]),
+            lambda: api.annotated_games('my-system', sort='random'),
+            lambda: list(api.iterate_annotated_games('my-system', sort='newest')),
+            lambda: api.export_public_games_by_token('tal-vs-larsen-1965'),
+            lambda: api.export_public_games_by_token([]),
+            lambda: api.export_public_games_by_token(['a b']),
+            lambda: api.export_master_games_by_token(['g1,g2']),
+            lambda: api.export_master_games_by_token([f'g{n}' for n in range(301)]),
+            lambda: api.resolve_game_link(''), lambda: api.resolve_game_link('x' * 501),
+            lambda: api.annotated_book_ccnb('../book'), lambda: api.annotated_book_ccnb('book', ccnb_format=4),
+        ]
+        with patch.object(api, 'fetch_url') as wire:
+            for call in calls:
+                with self.subTest(call=call), self.assertRaises(ApiError):
+                    call()
+        wire.assert_not_called()
+
     def test_public_imported_pgn_reads_text(self):
         api = ClassicChessClient()
         with patch.object(api, 'fetch_url', return_value=(b'1. e4 *', 'application/x-chess-pgn')) as wire:

@@ -312,6 +312,9 @@ class SiteGapRequestTests(TestCase):
         self.assert_request(lambda: api.account_gym_new_game('morphy', 't', time='custom', minutes=2, increment=1),
                             'POST', '/api/v1/account/gym/bots/morphy/games/',
                             {'color': 'white', 'time': 'custom', 'minutes': 2, 'increment': 1})
+        self.assert_request(lambda: api.account_gym_new_game('morphy', 't', version='v4'),
+                            'POST', '/api/v1/account/gym/bots/morphy/games/',
+                            {'color': 'white', 'time': 'unlimited', 'version': 'v4'})
         self.assert_request(lambda: api.account_gym_game(7, 't'), 'GET', game, None)
         self.assert_request(lambda: api.account_gym_delete_game(7, 't'), 'DELETE', game, None)
         self.assert_request(lambda: api.account_gym_move(7, 'e7e8q', 0, 't'),
@@ -389,6 +392,8 @@ class SiteGapRequestTests(TestCase):
             lambda: api.account_gym_move(7, 'e2e4', -1, 't'),
             lambda: api.account_gym_bot_move(7, True, 't'),
             lambda: api.account_gym_abort(-3, 't'),
+            lambda: api.account_gym_new_game('morphy', 't', version=''),
+            lambda: api.account_gym_new_game('morphy', 't', version=4),
         ]
         with patch('classicchess_api.application.build_opener') as opener:
             for call in calls:
@@ -422,6 +427,138 @@ class SiteGapRequestTests(TestCase):
             lambda: api.account_notebook('not-a-uuid', 't'),
             lambda: api.account_notebook_chapter_pgn(NOTEBOOK, 0, 't'),
             lambda: api.account_notebook_file(NOTEBOOK, 't', password=''),
+        ]
+        with patch('classicchess_api.application.build_opener') as opener:
+            for call in calls:
+                with self.subTest(call=call), self.assertRaises(ApiError):
+                    call()
+        opener.assert_not_called()
+
+
+def sent(call, reply=OK_BODY):
+    """The one request a helper sends, answered with ``reply``."""
+    with patch('classicchess_api.application.build_opener') as opener:
+        opener.return_value.open.return_value = Reply(reply)
+        call()
+        assert opener.return_value.open.call_count == 1
+        return opener.return_value.open.call_args.args[0]
+
+
+class AccountApiGapTests(TestCase):
+    def assert_requests(self, cases, token='Bearer t'):
+        for call, method, path, body in cases:
+            with self.subTest(method=method, path=path):
+                request = sent(call)
+                self.assertEqual((request.get_method(), request.full_url), (method, 'https://classicchess.com' + path))
+                self.assertEqual(request.get_header('Authorization'), token)
+                self.assertEqual(json.loads(request.data) if request.data else None, body)
+
+    def test_preferences_and_notebook_editing_send_the_contract_requests(self):
+        api = ApplicationClient()
+        notebook = '/api/v1/account/notebooks/' + NOTEBOOK + '/'
+        chapter = notebook + 'chapters/9/'
+        self.assert_requests([
+            (lambda: api.account_preferences('t'), 'GET', '/api/v1/account/preferences/', None),
+            (lambda: api.account_update_preferences('t', board_theme='green', engine_lines=3, engine_eval_bar=False),
+             'PATCH', '/api/v1/account/preferences/', {'board_theme': 'green', 'engine_lines': 3, 'engine_eval_bar': False}),
+            (lambda: api.account_create_notebook('Sicilian', 't', visibility='unlisted', game='tal-vs-larsen'),
+             'POST', '/api/v1/account/notebooks/', {'title': 'Sicilian', 'visibility': 'unlisted', 'game': 'tal-vs-larsen'}),
+            (lambda: api.account_rename_notebook(NOTEBOOK.upper(), 'Najdorf', 't'), 'PATCH', notebook, {'title': 'Najdorf'}),
+            (lambda: api.account_create_notebook_section(NOTEBOOK, 'Openings', 't', parent_id=4),
+             'POST', notebook + 'sections/', {'title': 'Openings', 'parent_id': 4}),
+            (lambda: api.account_rename_notebook_section(NOTEBOOK, 4, 'Lines', 't'),
+             'PATCH', notebook + 'sections/4/', {'title': 'Lines'}),
+            (lambda: api.account_delete_notebook_section(NOTEBOOK, 4, 't'), 'DELETE', notebook + 'sections/4/', None),
+            (lambda: api.account_move_notebook_section(NOTEBOOK, 4, 't', before_section_id=2),
+             'POST', notebook + 'sections/4/move/', {'before_section_id': 2}),
+            (lambda: api.account_move_notebook_section(NOTEBOOK, 4, 't'), 'POST', notebook + 'sections/4/move/', {}),
+            (lambda: api.account_create_notebook_chapter(NOTEBOOK, 't', section_id=4, initial_position='8/8/8/8/8/8/8/K6k w'),
+             'POST', notebook + 'chapters/', {'section_id': 4, 'initial_position': '8/8/8/8/8/8/8/K6k w'}),
+            (lambda: api.account_notebook_chapter(NOTEBOOK, 9, 't'), 'GET', chapter, None),
+            (lambda: api.account_save_notebook_chapter(NOTEBOOK, 9, '1. e4 *', 3, 't'),
+             'PUT', chapter, {'pgn': '1. e4 *', 'content_version': 3}),
+            (lambda: api.account_save_notebook_chapter(NOTEBOOK, 9, '1. d4 *', 4, 't', title='Queen pawn'),
+             'PUT', chapter, {'pgn': '1. d4 *', 'content_version': 4, 'title': 'Queen pawn'}),
+            (lambda: api.account_rename_notebook_chapter(NOTEBOOK, 9, 'Main line', 't'), 'PATCH', chapter, {'title': 'Main line'}),
+            (lambda: api.account_delete_notebook_chapter(NOTEBOOK, 9, 't'), 'DELETE', chapter, None),
+            (lambda: api.account_move_notebook_chapter(NOTEBOOK, 9, 't', section_id=4, before_chapter_id=2),
+             'POST', chapter + 'move/', {'section_id': 4, 'before_chapter_id': 2}),
+            (lambda: api.account_delete_notebook(NOTEBOOK, 't'), 'DELETE', notebook, None),
+            (lambda: api.account_notebook_settings(NOTEBOOK, 't'), 'GET', notebook + 'settings/', None),
+            (lambda: api.account_update_notebook_settings(NOTEBOOK, 't', visibility='public', allow_public_exports=False),
+             'PATCH', notebook + 'settings/', {'visibility': 'public', 'allow_public_exports': False}),
+            (lambda: api.account_set_notebook_collaborator(NOTEBOOK, 'ann', 'editor', 't', can_present_live=True),
+             'POST', notebook + 'collaborators/', {'username': 'ann', 'role': 'editor', 'can_present_live': True}),
+            (lambda: api.account_remove_notebook_collaborator(NOTEBOOK, 12, 't'), 'DELETE', notebook + 'collaborators/12/', None),
+            (lambda: api.account_leave_notebook(NOTEBOOK, 't'), 'DELETE', notebook + 'membership/', None),
+            (lambda: api.account_notebook_share(NOTEBOOK, 't'), 'GET', notebook + 'share/', None),
+            (lambda: api.account_create_notebook_share(NOTEBOOK, 't'), 'PUT', notebook + 'share/', None),
+            (lambda: api.account_revoke_notebook_share(NOTEBOOK, 't'), 'DELETE', notebook + 'share/', None),
+            (lambda: api.account_notebook_chapter_share(NOTEBOOK, 9, 't'), 'GET', chapter + 'share/', None),
+            (lambda: api.account_create_notebook_chapter_share(NOTEBOOK, 9, 't'), 'PUT', chapter + 'share/', None),
+            (lambda: api.account_revoke_notebook_chapter_share(NOTEBOOK, 9, 't'), 'DELETE', chapter + 'share/', None),
+        ])
+
+    def test_a_stale_chapter_save_returns_the_conflict_without_retrying(self):
+        conflict = Reply(json.dumps({'error': {'code': 'chapter_conflict', 'message': 'Changed elsewhere.'}}).encode())
+        conflict.status = 409
+        with patch('classicchess_api.application.build_opener') as opener:
+            opener.return_value.open.return_value = conflict
+            saved = ApplicationClient().account_save_notebook_chapter(NOTEBOOK, 9, '1. e4 *', 3, 't')
+        self.assertEqual((saved.ok, saved.status, saved.data['error']['code']), (False, 409, 'chapter_conflict'))
+        self.assertEqual(opener.return_value.open.call_count, 1)
+
+    def test_mobile_device_requests_send_the_contract_requests(self):
+        api = ApplicationClient()
+        self.assert_requests([
+            (lambda: api.mobile_sign_out('t'), 'POST', '/api/v1/account/mobile/logout/', None),
+            (lambda: api.mobile_sessions('t'), 'GET', '/api/v1/account/mobile/sessions/', None),
+            (lambda: api.mobile_revoke_session(5, 't'), 'POST', '/api/v1/account/mobile/sessions/5/revoke/', None),
+            (lambda: api.mobile_revoke_all_sessions('t'), 'POST', '/api/v1/account/mobile/sessions/revoke-all/', None),
+            (lambda: api.mobile_settings('t'), 'GET', '/api/v1/account/mobile/settings/', None),
+            (lambda: api.mobile_update_settings('t', piece_set='merida', cast_cc_emails=['coach@example.test']),
+             'POST', '/api/v1/account/mobile/settings/', {'piece_set': 'merida', 'cast_cc_emails': ['coach@example.test']}),
+        ])
+        self.assert_requests([
+            (lambda: api.mobile_home(), 'GET', '/api/v1/mobile/home/', None),
+            (lambda: api.mobile_android_release(), 'GET', '/api/v1/mobile/android/release/', None),
+            (lambda: api.mobile_sign_in('ann', 'test-only-password', two_factor_code='123456', device_name='Pixel'),
+             'POST', '/api/v1/account/mobile/login/',
+             {'username': 'ann', 'password': 'test-only-password', 'two_factor_code': '123456', 'device_name': 'Pixel'}),
+        ], token=None)
+
+    def test_mobile_sign_in_sends_passwords_only_over_https_or_loopback(self):
+        with patch('classicchess_api.application.build_opener') as opener:
+            with self.assertRaises(ApiError) as caught:
+                ApplicationClient('http://classicchess.example').mobile_sign_in('ann', 'test-only-password')
+            opener.assert_not_called()
+        self.assertEqual(caught.exception.code, 'unsafe_credentials')
+        request = sent(lambda: ApplicationClient('http://127.0.0.1:8123').mobile_sign_in('ann', 'test-only-password'))
+        self.assertEqual(request.full_url, 'http://127.0.0.1:8123/api/v1/account/mobile/login/')
+
+    def test_api_gap_application_helpers_reject_unsafe_arguments_before_sending(self):
+        api = ApplicationClient()
+        calls = [
+            lambda: api.account_update_preferences('t'),
+            lambda: api.account_update_preferences('t', board_theme=None),
+            lambda: api.account_create_notebook(' ', 't'),
+            lambda: api.account_create_notebook('Sicilian', 't', visibility='secret'),
+            lambda: api.account_rename_notebook('../me', 'x', 't'),
+            lambda: api.account_create_notebook_section(NOTEBOOK, 'x', 't', parent_id=0),
+            lambda: api.account_rename_notebook_section(NOTEBOOK, '4', 'x', 't'),
+            lambda: api.account_move_notebook_section(NOTEBOOK, 4, 't', before_section_id=True),
+            lambda: api.account_notebook_chapter(NOTEBOOK, 0, 't'),
+            lambda: api.account_save_notebook_chapter(NOTEBOOK, 9, '1. e4 *', 0, 't'),
+            lambda: api.account_save_notebook_chapter(NOTEBOOK, 9, '1. e4 *', True, 't'),
+            lambda: api.account_save_notebook_chapter(NOTEBOOK, 9, None, 3, 't'),
+            lambda: api.account_move_notebook_chapter(NOTEBOOK, 9, 't', section_id=-1),
+            lambda: api.account_update_notebook_settings(NOTEBOOK, 't'),
+            lambda: api.account_set_notebook_collaborator(NOTEBOOK, 'ann', 'owner', 't'),
+            lambda: api.account_remove_notebook_collaborator(NOTEBOOK, '12', 't'),
+            lambda: api.account_revoke_notebook_chapter_share(NOTEBOOK, -9, 't'),
+            lambda: api.mobile_revoke_session(0, 't'),
+            lambda: api.mobile_update_settings('t'),
+            lambda: api.mobile_sign_in('ann', ''),
         ]
         with patch('classicchess_api.application.build_opener') as opener:
             for call in calls:

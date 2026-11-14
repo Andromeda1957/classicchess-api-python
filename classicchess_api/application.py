@@ -103,12 +103,16 @@ def _puzzle_id(value):
     return value
 
 
-def _gym_new_game_body(color, time, minutes, increment):
+def _gym_new_game_body(color, time, minutes, increment, version=None):
     if color not in GYM_COLORS:
         raise ApiError('color must be white, black or random.', code='invalid_request')
     if not isinstance(time, str) or not time:
         raise ApiError('time must be unlimited, a preset such as 3+0, or custom.', code='invalid_request')
+    if version is not None and (not isinstance(version, str) or not version):
+        raise ApiError("version must be a key from the bot's versions, such as v4.", code='invalid_request')
     body = {'color': color, 'time': time}
+    if version is not None:
+        body['version'] = version
     if time == 'custom':
         if type(minutes) is not int or minutes < 1 or type(increment) is not int or increment < 0:
             raise ApiError('A custom time needs whole minutes from 1 and increment seconds from 0.',
@@ -117,6 +121,82 @@ def _gym_new_game_body(color, time, minutes, increment):
     elif minutes is not None or increment is not None:
         raise ApiError('minutes and increment apply only to time="custom".', code='invalid_request')
     return body
+
+
+LOOPBACK_HOSTS = ('localhost', '127.0.0.1', '::1')
+COLLECTION_SORTS = ('added', 'date_desc', 'date_asc', 'player', 'manual')
+IMPORT_SOURCES = ('lichess', 'chesscom', 'pgn')
+IMPORTED_GAME_SORTS = ('imported_desc', 'imported_asc', 'date_desc', 'date_asc', 'player', 'visibility')
+NOTEBOOK_VISIBILITIES = ('private', 'unlisted', 'public')
+NOTEBOOK_ROLES = ('viewer', 'commenter', 'editor', 'manager')
+
+
+def _choice(value, choices, label):
+    if value is not None and value not in choices:
+        raise ApiError(f'{label} must be one of: {", ".join(choices)}.', code='invalid_request')
+    return value
+
+
+def _text(value, label):
+    if not isinstance(value, str) or not value.strip():
+        raise ApiError(f'Use a non-empty {label}.', code='invalid_request')
+    return value
+
+
+def _present(**fields):
+    """The fields given, leaving out None, for an optional or partial JSON body."""
+    return {key: value for key, value in fields.items() if value is not None}
+
+
+def _changes(label, **fields):
+    payload = _present(**fields)
+    if not payload:
+        raise ApiError(f'Provide at least one {label} to change.', code='invalid_request')
+    return payload
+
+
+def _list_query(page, page_size, **filters):
+    extra = _present(**filters)
+    return _page_query(page, page_size) + ('&' + urlencode(extra) if extra else '')
+
+
+def _optional_id(value, label):
+    return None if value is None else _positive_id(value, label)
+
+
+def _collection_path(collection_id, suffix=''):
+    return f'/api/v1/account/collections/{_collection_id(collection_id)}/' + suffix
+
+
+def _notebook_path(notebook_uuid, suffix=''):
+    return '/api/v1/account/notebooks/' + _notebook_uuid(notebook_uuid) + '/' + suffix
+
+
+def _section_path(notebook_uuid, section_id, suffix=''):
+    return _notebook_path(notebook_uuid, f'sections/{_positive_id(section_id, "section ID")}/' + suffix)
+
+
+def _chapter_path(notebook_uuid, chapter_id, suffix=''):
+    return _notebook_path(notebook_uuid, f'chapters/{_positive_id(chapter_id, "chapter ID")}/' + suffix)
+
+
+def _plan_items(items):
+    """Games in playback order: slugs, or {"game": slug, "note": text} objects."""
+    values = [] if isinstance(items, (str, dict)) else [
+        {'game': item} if isinstance(item, str) else item for item in items]
+    if not 1 <= len(values) <= 100 or not all(
+            isinstance(item, dict) and isinstance(item.get('game'), str) and item['game'] for item in values):
+        raise ApiError('Use 1 to 100 games: slugs or {"game": slug, "note": text}.', code='invalid_request')
+    return values
+
+
+def _item_ids(values):
+    # A string such as '78' is not a list of IDs; it had become an empty list
+    # that passed this check and was sent.
+    ids = None if isinstance(values, (str, bytes)) else list(values)
+    if ids is None or len(ids) > 10000 or not all(type(item) is int and item > 0 for item in ids):
+        raise ApiError('Use every collection item ID once, as positive integers.', code='invalid_request')
+    return ids
 
 
 class NoRedirect(HTTPRedirectHandler):
@@ -319,6 +399,109 @@ class ApplicationClient:
         return self.request(f'/api/v1/account/imported-games/{public_slug_segment(game_slug, "game slug")}/',
                             method='DELETE', token=token)
 
+    def account_imported_games(self, token: str, *, q=None, source=None, sort=None,
+                               page=1, page_size=50) -> ApplicationResponse:
+        """Your imports with their quota; source is lichess, chesscom or pgn. Needs library:read."""
+        query = _list_query(page, page_size, q=q, source=_choice(source, IMPORT_SOURCES, 'source'),
+                            sort=_choice(sort, IMPORTED_GAME_SORTS, 'sort'))
+        return self.request('/api/v1/account/imported-games/?' + query, token=token)
+
+    def account_import_game(self, source: str, token: str, *, pgn=None, remote_url=None,
+                            visibility=None) -> ApplicationResponse:
+        """Import one game (201): source "pgn" with pgn text, or "lichess"/"chesscom" with remote_url.
+
+        Needs library:write. Each call imports another game; a 429 carries retry_after.
+        """
+        if source not in IMPORT_SOURCES:
+            raise ApiError('source must be lichess, chesscom or pgn.', code='invalid_request')
+        payload = _present(source=source, pgn=pgn, remote_url=remote_url,
+                           visibility=_choice(visibility, ('private', 'public'), 'visibility'))
+        return self.request('/api/v1/account/imported-games/', method='POST', body=json.dumps(payload), token=token)
+
+    def account_imported_game(self, game_slug: str, token: str) -> ApplicationResponse:
+        """One of your imports with its PGN and board-ready mainline."""
+        return self.request(f'/api/v1/account/imported-games/{public_slug_segment(game_slug, "game slug")}/',
+                            token=token)
+
+    # Collections and study plans. Personal tokens need library:read to read and
+    # library:write to change them; device sessions pass both.
+    def account_collection_games(self, collection_id: int, token: str, *, page=1, page_size=50,
+                                 sort=None, q=None) -> ApplicationResponse:
+        """One page of a collection's games. q keeps games whose players, event, date, opening or ECO
+        contain it, as the website's collection filter does; sort defaults to the saved one."""
+        query = _list_query(page, page_size, sort=_choice(sort, COLLECTION_SORTS, 'sort'), q=q)
+        return self.request(_collection_path(collection_id) + '?' + query, token=token)
+
+    def account_update_collection(self, collection_id: int, token: str, *, name=None, sort=None,
+                                  description=None, is_plan=None) -> ApplicationResponse:
+        """Change only the given fields; is_plan=True selects manual order unless sort is given."""
+        payload = _changes('collection field', name=name, sort=_choice(sort, COLLECTION_SORTS, 'sort'),
+                           description=description, is_plan=is_plan)
+        return self.request(_collection_path(collection_id), method='PATCH', body=json.dumps(payload), token=token)
+
+    def account_update_collection_item(self, collection_id: int, item_id: int, token: str, *, note=None,
+                                       studied=None) -> ApplicationResponse:
+        """Save a game's note and/or studied mark; studied=False clears it. Safe to retry."""
+        payload = _changes('of note or studied', note=note, studied=studied)
+        path = _collection_path(collection_id, f'items/{_positive_id(item_id, "item ID")}/')
+        return self.request(path, method='PATCH', body=json.dumps(payload), token=token)
+
+    def account_remove_collection_item(self, collection_id: int, item_id: int, token: str) -> ApplicationResponse:
+        """Remove a game by its collection item ID; a game already gone is not an error."""
+        path = _collection_path(collection_id, f'items/{_positive_id(item_id, "item ID")}/')
+        return self.request(path, method='DELETE', token=token)
+
+    def account_remove_collection_game(self, collection_id: int, game_slug: str, token: str) -> ApplicationResponse:
+        """Remove a game by its slug, the counterpart of account_add_collection_game; changed is
+        false when it was not there. Works after its importer made it private."""
+        path = _collection_path(collection_id, f'games/{public_slug_segment(game_slug, "game slug")}/')
+        return self.request(path, method='DELETE', token=token)
+
+    def account_create_plan(self, name: str, items, idempotency_key: str, token: str, *,
+                            description=None) -> ApplicationResponse:
+        """Create a manual-order study plan of 1 to 100 games in one step (201).
+
+        items are game slugs or {"game": slug, "note": text}. Retrying with the same
+        idempotency_key and input returns the existing plan (200); other input is 409.
+        """
+        payload = _present(name=_text(name, 'plan name'), description=description,
+                           idempotency_key=_text(idempotency_key, 'idempotency key'), items=_plan_items(items))
+        return self.request('/api/v1/account/plans/', method='POST', body=json.dumps(payload), token=token)
+
+    def account_reorder_collection(self, collection_id: int, item_ids, token: str) -> ApplicationResponse:
+        """Set manual order: every current item ID exactly once, in the order wanted."""
+        return self.request(_collection_path(collection_id, 'reorder/'), method='PUT',
+                            body=json.dumps({'item_ids': _item_ids(item_ids)}), token=token)
+
+    def account_plan_progress(self, collection_id: int, token: str, *, page=1, page_size=50) -> ApplicationResponse:
+        """Studied progress for a collection's games."""
+        return self.request(_collection_path(collection_id, 'progress/?' + _page_query(page, page_size)), token=token)
+
+    def account_toggle_player_bookmark(self, player_slug: str, token: str) -> ApplicationResponse:
+        """Flip a player's bookmark and return the new state. A toggle: never retry it automatically."""
+        path = f'/api/v1/account/players/{public_slug_segment(player_slug, "player slug")}/bookmark/'
+        return self.request(path, method='POST', token=token)
+
+    def account_game_library(self, game_slug: str, token: str) -> ApplicationResponse:
+        """Whether you starred a game and which of your collections hold it. Needs library:read."""
+        return self.request(f'/api/v1/account/games/{public_slug_segment(game_slug, "game slug")}/library/',
+                            token=token)
+
+    # Website preferences: preferences:read to read, preferences:write to change.
+    def account_preferences(self, token: str) -> ApplicationResponse:
+        """The website's Settings values with the choices each one accepts (``catalogs``)."""
+        return self.request('/api/v1/account/preferences/', token=token)
+
+    def account_update_preferences(self, token: str, **changes) -> ApplicationResponse:
+        """Change only the named preferences, such as board_theme="green" or engine_lines=3.
+
+        Keys are the fields account_preferences returns. When any value is refused,
+        nothing changes. The Android app's own sound and speech are never touched.
+        """
+        if not changes or any(value is None for value in changes.values()):
+            raise ApiError('Name at least one preference to change, without None values.', code='invalid_request')
+        return self.request('/api/v1/account/preferences/', method='PATCH', body=json.dumps(changes), token=token)
+
     # GIF exports need a registered account: any personal token, or a device session.
     def master_game_gif(self, game_token: str, token: str, *, orientation='white') -> ApplicationDownload:
         game = public_slug_segment(game_token, 'game token')
@@ -408,6 +591,171 @@ class ApplicationClient:
         return self.download(path, method='POST', body=json.dumps({'password': password}),
                              token=token, accept=accept, ccnb_format=ccnb_format)
 
+    def account_notebook_chapter(self, notebook_uuid: str, chapter_id: int, token: str) -> ApplicationResponse:
+        """A chapter with its PGN and content_version. Read both here before an edit you will save."""
+        return self.request(_chapter_path(notebook_uuid, chapter_id), token=token)
+
+    # Notebook editing: personal tokens need notebooks:write. The owner, managers
+    # and editors may edit; viewers and commenters get 403 permission_denied.
+    def account_create_notebook(self, title: str, token: str, *, description=None, visibility=None,
+                                chapter_title=None, initial_position=None, game=None) -> ApplicationResponse:
+        """Create a Notebook you own with one chapter (201). Each call creates another.
+
+        The chapter starts from initial_position (a FEN or one PGN game), or from the
+        game with that slug, or else the standard position. visibility defaults to private.
+        """
+        payload = _present(title=_text(title, 'title'), description=description,
+                           visibility=_choice(visibility, NOTEBOOK_VISIBILITIES, 'visibility'),
+                           chapter_title=chapter_title, initial_position=initial_position, game=game)
+        return self.request('/api/v1/account/notebooks/', method='POST', body=json.dumps(payload), token=token)
+
+    def account_rename_notebook(self, notebook_uuid: str, title: str, token: str) -> ApplicationResponse:
+        """Owner or manager. Safe to retry."""
+        return self.request(_notebook_path(notebook_uuid), method='PATCH',
+                            body=json.dumps({'title': _text(title, 'title')}), token=token)
+
+    def account_create_notebook_section(self, notebook_uuid: str, title: str, token: str, *,
+                                        parent_id=None) -> ApplicationResponse:
+        """Add a folder last among its siblings, inside parent_id or at the top level (201)."""
+        payload = _present(title=_text(title, 'title'), parent_id=_optional_id(parent_id, 'parent folder ID'))
+        return self.request(_notebook_path(notebook_uuid, 'sections/'), method='POST',
+                            body=json.dumps(payload), token=token)
+
+    def account_rename_notebook_section(self, notebook_uuid: str, section_id: int, title: str,
+                                        token: str) -> ApplicationResponse:
+        return self.request(_section_path(notebook_uuid, section_id), method='PATCH',
+                            body=json.dumps({'title': _text(title, 'title')}), token=token)
+
+    def account_delete_notebook_section(self, notebook_uuid: str, section_id: int, token: str) -> ApplicationResponse:
+        """Delete a folder with every nested folder and chapter in it. A retry after success is 404."""
+        return self.request(_section_path(notebook_uuid, section_id), method='DELETE', token=token)
+
+    def account_move_notebook_section(self, notebook_uuid: str, section_id: int, token: str, *,
+                                      parent_id=None, before_section_id=None) -> ApplicationResponse:
+        """Move a folder under parent_id (else the top level) before before_section_id (else last).
+
+        The reply is the whole Notebook tree, because siblings are renumbered.
+        """
+        payload = _present(parent_id=_optional_id(parent_id, 'parent folder ID'),
+                           before_section_id=_optional_id(before_section_id, 'folder ID'))
+        return self.request(_section_path(notebook_uuid, section_id, 'move/'), method='POST',
+                            body=json.dumps(payload), token=token)
+
+    def account_create_notebook_chapter(self, notebook_uuid: str, token: str, *, title=None, section_id=None,
+                                        initial_position=None, game=None) -> ApplicationResponse:
+        """Add a chapter last, in section_id or at the top level (201). Each call adds another.
+
+        It starts from initial_position (a FEN or one PGN game), or from the game with
+        that slug, or else the standard position.
+        """
+        payload = _present(title=title, section_id=_optional_id(section_id, 'folder ID'),
+                           initial_position=initial_position, game=game)
+        return self.request(_notebook_path(notebook_uuid, 'chapters/'), method='POST',
+                            body=json.dumps(payload), token=token)
+
+    def account_save_notebook_chapter(self, notebook_uuid: str, chapter_id: int, pgn: str, content_version: int,
+                                      token: str, *, title=None) -> ApplicationResponse:
+        """Replace a chapter's PGN if it is still at content_version; the reply has the new version.
+
+        If the chapter changed after you read it, the reply is status 409 with error code
+        chapter_conflict and nothing is saved. That reply carries no chapter content: read
+        account_notebook_chapter for the current PGN and content_version, reapply the edit and
+        save again. Retrying a save that succeeded also returns 409, so never retry blindly.
+        """
+        if not isinstance(pgn, str) or type(content_version) is not int or content_version < 1:
+            raise ApiError('Use PGN text and the positive content_version you read.', code='invalid_request')
+        payload = _present(pgn=pgn, content_version=content_version, title=title)
+        return self.request(_chapter_path(notebook_uuid, chapter_id), method='PUT',
+                            body=json.dumps(payload), token=token)
+
+    def account_rename_notebook_chapter(self, notebook_uuid: str, chapter_id: int, title: str,
+                                        token: str) -> ApplicationResponse:
+        """A rename raises content_version, so a save based on the earlier version conflicts."""
+        return self.request(_chapter_path(notebook_uuid, chapter_id), method='PATCH',
+                            body=json.dumps({'title': _text(title, 'title')}), token=token)
+
+    def account_delete_notebook_chapter(self, notebook_uuid: str, chapter_id: int, token: str) -> ApplicationResponse:
+        """A retry after success is 404."""
+        return self.request(_chapter_path(notebook_uuid, chapter_id), method='DELETE', token=token)
+
+    def account_move_notebook_chapter(self, notebook_uuid: str, chapter_id: int, token: str, *,
+                                      section_id=None, before_chapter_id=None) -> ApplicationResponse:
+        """Move a chapter into section_id (else the top level) before before_chapter_id (else last).
+
+        The reply is the whole Notebook tree, because chapters are renumbered.
+        """
+        payload = _present(section_id=_optional_id(section_id, 'folder ID'),
+                           before_chapter_id=_optional_id(before_chapter_id, 'chapter ID'))
+        return self.request(_chapter_path(notebook_uuid, chapter_id, 'move/'), method='POST',
+                            body=json.dumps(payload), token=token)
+
+    # Notebook management: personal tokens need notebooks:manage. Only the owner or a
+    # manager may manage, and only the owner may delete or grant and change managers.
+    def account_delete_notebook(self, notebook_uuid: str, token: str) -> ApplicationResponse:
+        """Owner only: deletes every folder, chapter, collaborator and share link. A retry is 404."""
+        return self.request(_notebook_path(notebook_uuid), method='DELETE', token=token)
+
+    def account_notebook_settings(self, notebook_uuid: str, token: str) -> ApplicationResponse:
+        """Settings, collaborators and the accepted choices, as the website settings page shows."""
+        return self.request(_notebook_path(notebook_uuid, 'settings/'), token=token)
+
+    def account_update_notebook_settings(self, notebook_uuid: str, token: str, *, title=None, description=None,
+                                         visibility=None, allow_public_exports=None) -> ApplicationResponse:
+        """Change only the given settings; the rest keep their current values. Safe to retry."""
+        payload = _changes('setting', title=title, description=description,
+                           visibility=_choice(visibility, NOTEBOOK_VISIBILITIES, 'visibility'),
+                           allow_public_exports=allow_public_exports)
+        return self.request(_notebook_path(notebook_uuid, 'settings/'), method='PATCH',
+                            body=json.dumps(payload), token=token)
+
+    def account_set_notebook_collaborator(self, notebook_uuid: str, username: str, role: str, token: str, *,
+                                          can_present_live=None) -> ApplicationResponse:
+        """Invite a public account (201) or change an existing collaborator's role (200). Safe to retry.
+
+        role is viewer, commenter, editor or manager; can_present_live is kept only for
+        editors and managers.
+        """
+        if role not in NOTEBOOK_ROLES:
+            raise ApiError('role must be viewer, commenter, editor or manager.', code='invalid_request')
+        payload = _present(username=_text(username, 'username'), role=role, can_present_live=can_present_live)
+        return self.request(_notebook_path(notebook_uuid, 'collaborators/'), method='POST',
+                            body=json.dumps(payload), token=token)
+
+    def account_remove_notebook_collaborator(self, notebook_uuid: str, collaborator_id: int,
+                                             token: str) -> ApplicationResponse:
+        """Remove a collaborator by the ID in the settings; one already gone is not an error."""
+        path = _notebook_path(notebook_uuid, f'collaborators/{_positive_id(collaborator_id, "collaborator ID")}/')
+        return self.request(path, method='DELETE', token=token)
+
+    def account_leave_notebook(self, notebook_uuid: str, token: str) -> ApplicationResponse:
+        """Remove your own invitation. The owner cannot leave; a retry is 404."""
+        return self.request(_notebook_path(notebook_uuid, 'membership/'), method='DELETE', token=token)
+
+    def account_notebook_share(self, notebook_uuid: str, token: str) -> ApplicationResponse:
+        """The active read-only share link, or active false. Keep its url private."""
+        return self.request(_notebook_path(notebook_uuid, 'share/'), token=token)
+
+    def account_create_notebook_share(self, notebook_uuid: str, token: str) -> ApplicationResponse:
+        """Create a share link; an active one is returned unchanged. Safe to retry."""
+        return self.request(_notebook_path(notebook_uuid, 'share/'), method='PUT', token=token)
+
+    def account_revoke_notebook_share(self, notebook_uuid: str, token: str) -> ApplicationResponse:
+        """Revoke the Notebook link; chapter links stay active. Safe to retry."""
+        return self.request(_notebook_path(notebook_uuid, 'share/'), method='DELETE', token=token)
+
+    def account_notebook_chapter_share(self, notebook_uuid: str, chapter_id: int, token: str) -> ApplicationResponse:
+        """The chapter's active share link, which opens only that chapter, or active false."""
+        return self.request(_chapter_path(notebook_uuid, chapter_id, 'share/'), token=token)
+
+    def account_create_notebook_chapter_share(self, notebook_uuid: str, chapter_id: int,
+                                              token: str) -> ApplicationResponse:
+        return self.request(_chapter_path(notebook_uuid, chapter_id, 'share/'), method='PUT', token=token)
+
+    def account_revoke_notebook_chapter_share(self, notebook_uuid: str, chapter_id: int,
+                                              token: str) -> ApplicationResponse:
+        """Revoke the chapter link; the Notebook link stays active. Safe to retry."""
+        return self.request(_chapter_path(notebook_uuid, chapter_id, 'share/'), method='DELETE', token=token)
+
     # The Gym: play the site's bots. Personal tokens need gym:read to read and
     # gym:play for the rest; device sessions pass both.
     def account_gym(self, token: str, *, page_size=20) -> ApplicationResponse:
@@ -423,9 +771,13 @@ class ApplicationClient:
         return self.request('/api/v1/account/gym/games/?' + query, token=token)
 
     def account_gym_new_game(self, bot_key: str, token: str, *, color='white', time='unlimited',
-                             minutes=None, increment=None) -> ApplicationResponse:
-        """Start a game (201). time is "unlimited", a preset such as "3+0", or "custom" with minutes and increment."""
-        body = _gym_new_game_body(color, time, minutes, increment)
+                             minutes=None, increment=None, version=None) -> ApplicationResponse:
+        """Start a game (201). time is "unlimited", a preset such as "3+0", or "custom" with minutes and increment.
+
+        version picks one of the bot's versions from account_gym, such as "v4"; omitted,
+        the game plays the bot's default_version. The game keeps it to the end.
+        """
+        body = _gym_new_game_body(color, time, minutes, increment, version)
         path = '/api/v1/account/gym/bots/' + public_slug_segment(bot_key, 'bot key') + '/games/'
         return self.request(path, method='POST', body=json.dumps(body), token=token)
 
@@ -529,6 +881,61 @@ class ApplicationClient:
     def account_puzzle_reset(self, token: str) -> ApplicationResponse:
         """Every puzzle goes back into your rotation. Your history stays."""
         return self.request('/api/v1/account/puzzles/reset/', method='POST', token=token)
+
+    # The mobile app's device operations. Signing in returns a device session; the
+    # session, device and settings operations accept only that session, not a personal token.
+    def mobile_home(self) -> ApplicationResponse:
+        """The app's front door: archive counts, Game of the Day and action links. No credential."""
+        return self.request('/api/v1/mobile/home/')
+
+    def mobile_android_release(self) -> ApplicationResponse:
+        """The current Android build: version, APK URL, SHA-256 checksum and size. No credential."""
+        return self.request('/api/v1/mobile/android/release/')
+
+    def mobile_sign_in(self, username: str, password: str, *, two_factor_code=None,
+                       device_name=None) -> ApplicationResponse:
+        """Sign in a device (201) and receive its session bearer. Sent only over HTTPS or loopback.
+
+        A 401 two_factor_required asks for the authenticator or recovery code. Keep the
+        returned session out of source files and logs, as with any credential.
+        """
+        origin = urlsplit(self.base_url)
+        if origin.scheme != 'https' and origin.hostname not in LOOPBACK_HOSTS:
+            raise ApiError('Passwords require an API over HTTPS or loopback development.', code='unsafe_credentials')
+        if not isinstance(password, str) or not password:
+            raise ApiError('Use a non-empty password.', code='invalid_request')
+        payload = _present(username=_text(username, 'username'), password=password,
+                           two_factor_code=two_factor_code, device_name=device_name)
+        return self.request('/api/v1/account/mobile/login/', method='POST', body=json.dumps(payload))
+
+    def mobile_sign_out(self, token: str) -> ApplicationResponse:
+        """Revoke this device session."""
+        return self.request('/api/v1/account/mobile/logout/', method='POST', token=token)
+
+    def mobile_sessions(self, token: str) -> ApplicationResponse:
+        """Your signed-in devices with names, times, expiry and which one is this session."""
+        return self.request('/api/v1/account/mobile/sessions/', token=token)
+
+    def mobile_revoke_session(self, session_id: int, token: str) -> ApplicationResponse:
+        session = str(_positive_id(session_id, 'session ID'))
+        return self.request('/api/v1/account/mobile/sessions/' + session + '/revoke/', method='POST', token=token)
+
+    def mobile_revoke_all_sessions(self, token: str) -> ApplicationResponse:
+        """Sign out every device of the account, this one included."""
+        return self.request('/api/v1/account/mobile/sessions/revoke-all/', method='POST', token=token)
+
+    def mobile_settings(self, token: str) -> ApplicationResponse:
+        """The app's board, engine, sound, speech, Cast and debug settings."""
+        return self.request('/api/v1/account/mobile/settings/', token=token)
+
+    def mobile_update_settings(self, token: str, **changes) -> ApplicationResponse:
+        """Change only the named settings, such as piece_set="merida" or engine_lines=2.
+
+        Sound and speech here are the Android app's own, separate from the website's.
+        """
+        if not changes or any(value is None for value in changes.values()):
+            raise ApiError('Name at least one setting to change, without None values.', code='invalid_request')
+        return self.request('/api/v1/account/mobile/settings/', method='POST', body=json.dumps(changes), token=token)
 
     def scan_position(self, image: bytes, token: str) -> ApplicationResponse:
         if not isinstance(image, bytes) or not 1 <= len(image) <= 850_000:

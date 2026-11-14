@@ -66,3 +66,87 @@ class CollectionHelperTests(TestCase):
                         api.account_add_curated_games(12, [{'notable': True}], *token, **controls)
                 wire.assert_not_called()
                 legacy.assert_not_called()
+
+
+class LibraryApiGapTests(TestCase):
+    def test_library_operations_send_the_contract_requests(self):
+        from classicchess_api.tests.test_application import sent
+
+        api = ApplicationClient()
+        collection = 'https://classicchess.com/api/v1/account/collections/12/'
+        cases = [
+            (lambda: api.account_collection_games(12, 'fixture', page=2, page_size=20, sort='player', q='Ruy Lopez'),
+             'GET', collection + '?page=2&page_size=20&sort=player&q=Ruy+Lopez', None),
+            (lambda: api.account_collection_games(12, 'fixture'), 'GET', collection + '?page=1&page_size=50', None),
+            (lambda: api.account_update_collection(12, 'fixture', name='Endgames', is_plan=True),
+             'PATCH', collection, {'name': 'Endgames', 'is_plan': True}),
+            (lambda: api.account_update_collection_item(12, 7, 'fixture', note='Rook ending', studied=False),
+             'PATCH', collection + 'items/7/', {'note': 'Rook ending', 'studied': False}),
+            (lambda: api.account_remove_collection_item(12, 7, 'fixture'), 'DELETE', collection + 'items/7/', None),
+            (lambda: api.account_remove_collection_game(12, 'tal-vs-larsen', 'fixture'),
+             'DELETE', collection + 'games/tal-vs-larsen/', None),
+            (lambda: api.account_create_plan('Tal', ['tal-vs-larsen', {'game': 'tal-vs-smyslov', 'note': 'Sacrifice'}],
+                                             'plan-1', 'fixture', description='Attacks'),
+             'POST', 'https://classicchess.com/api/v1/account/plans/',
+             {'name': 'Tal', 'description': 'Attacks', 'idempotency_key': 'plan-1',
+              'items': [{'game': 'tal-vs-larsen'}, {'game': 'tal-vs-smyslov', 'note': 'Sacrifice'}]}),
+            (lambda: api.account_reorder_collection(12, (9, 7, 8), 'fixture'),
+             'PUT', collection + 'reorder/', {'item_ids': [9, 7, 8]}),
+            (lambda: api.account_plan_progress(12, 'fixture', page=3), 'GET', collection + 'progress/?page=3&page_size=50', None),
+            (lambda: api.account_toggle_player_bookmark('tal', 'fixture'),
+             'POST', 'https://classicchess.com/api/v1/account/players/tal/bookmark/', None),
+            (lambda: api.account_game_library('tal-vs-larsen', 'fixture'),
+             'GET', 'https://classicchess.com/api/v1/account/games/tal-vs-larsen/library/', None),
+            (lambda: api.account_imported_games('fixture', q='Tal 1960', source='lichess', sort='date_desc'),
+             'GET', 'https://classicchess.com/api/v1/account/imported-games/?page=1&page_size=50'
+                    '&q=Tal+1960&source=lichess&sort=date_desc', None),
+            (lambda: api.account_import_game('pgn', 'fixture', pgn='1. e4 e5 *', visibility='private'),
+             'POST', 'https://classicchess.com/api/v1/account/imported-games/',
+             {'source': 'pgn', 'pgn': '1. e4 e5 *', 'visibility': 'private'}),
+            (lambda: api.account_import_game('lichess', 'fixture', remote_url='https://lichess.org/abcdefgh'),
+             'POST', 'https://classicchess.com/api/v1/account/imported-games/',
+             {'source': 'lichess', 'remote_url': 'https://lichess.org/abcdefgh'}),
+            (lambda: api.account_imported_game('ann-vs-bob-1', 'fixture'),
+             'GET', 'https://classicchess.com/api/v1/account/imported-games/ann-vs-bob-1/', None),
+        ]
+        for call, method, url, body in cases:
+            with self.subTest(method=method, url=url):
+                request = sent(call)
+                self.assertEqual((request.get_method(), request.full_url), (method, url))
+                self.assertEqual(request.get_header('Authorization'), 'Bearer fixture')
+                self.assertEqual(json.loads(request.data) if request.data else None, body)
+
+    def test_library_operations_reject_unsafe_arguments_before_networking(self):
+        api = ApplicationClient()
+        calls = [
+            lambda: api.account_collection_games(0, 'fixture'),
+            lambda: api.account_collection_games(12, 'fixture', sort='random'),
+            lambda: api.account_collection_games(12, 'fixture', page_size=101),
+            lambda: api.account_update_collection(12, 'fixture'),
+            lambda: api.account_update_collection(12, 'fixture', sort='rating'),
+            lambda: api.account_update_collection_item(12, 7, 'fixture'),
+            lambda: api.account_update_collection_item(12, '7', 'fixture', studied=True),
+            lambda: api.account_remove_collection_item(12, True, 'fixture'),
+            lambda: api.account_remove_collection_game(12, '../12', 'fixture'),
+            lambda: api.account_create_plan('Tal', [], 'plan-1', 'fixture'),
+            lambda: api.account_create_plan('Tal', 'tal-vs-larsen', 'plan-1', 'fixture'),
+            lambda: api.account_create_plan('Tal', [{'note': 'x'}], 'plan-1', 'fixture'),
+            lambda: api.account_create_plan('Tal', ['g'] * 101, 'plan-1', 'fixture'),
+            lambda: api.account_create_plan('Tal', ['g'], ' ', 'fixture'),
+            lambda: api.account_create_plan(' ', ['g'], 'plan-1', 'fixture'),
+            lambda: api.account_reorder_collection(12, [7, 0], 'fixture'),
+            lambda: api.account_reorder_collection(12, '78', 'fixture'),
+            lambda: api.account_plan_progress(12, 'fixture', page=0),
+            lambda: api.account_toggle_player_bookmark('tal/../x', 'fixture'),
+            lambda: api.account_game_library('', 'fixture'),
+            lambda: api.account_imported_games('fixture', source='pdf'),
+            lambda: api.account_imported_games('fixture', sort='rating'),
+            lambda: api.account_import_game('chessbase', 'fixture', pgn='1. e4 *'),
+            lambda: api.account_import_game('pgn', 'fixture', pgn='1. e4 *', visibility='unlisted'),
+            lambda: api.account_imported_game('a/b', 'fixture'),
+        ]
+        with patch('classicchess_api.application.build_opener') as opener:
+            for call in calls:
+                with self.subTest(call=call), self.assertRaises(ApiError):
+                    call()
+        opener.assert_not_called()
